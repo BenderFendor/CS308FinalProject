@@ -1,0 +1,1 @@
+https://lisyarus.github.io/blog/posts/soft-body-physics.html

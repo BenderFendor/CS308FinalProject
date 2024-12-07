@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Roguelike Bounce Game</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: black;
+        }
+        .game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        #gameCanvas {
+            display: block;
+        }
+        #fpsCounter {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-family: monospace;
+            z-index: 100;
+        }
+        #score {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            color: white;
+            font-family: monospace;
+            z-index: 100;
+        }
+        #game-info {
+            position: fixed;
+            bottom: 20px;
+            color: white;
+            font-family: monospace;
+            text-align: center;
+            z-index: 100;
+        }
+        #game-over-overlay {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-family: monospace;
+            text-align: center;
+            z-index: 200;
+            visibility: hidden;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <canvas id="gameCanvas"></canvas>
+        <div id="fpsCounter">FPS: 0</div>
+        <div id="score">Score: 0</div>
+        <div id="game-info">
+            <p>Press F for fullscreen<br>
+               Click and drag to launch your character</p>
+        </div>
+        <div id="game-over-overlay">
+            <div id="game-over-message">Game Over</div>
+            <div id="final-score">Final Score: <span id="final-score-value"></span></div>
+            <button id="retry" onclick="initialize()">Retry</button>
+        </div>
+    </div>
+
+    <audio id="bounce" preload="auto" style="display:none" src="bounce.mp3"></audio>
+    <audio id="scoresfx" preload="auto" style="display:none" src="score.wav"></audio>
+    <audio id="gameoversfx" preload="auto" style="display:none" src="gameover.wav"></audio>
+    <audio id="bgMusic" preload="auto" style="display:none" loop src="bgmusic.mp3"></audio>
+
+    <script src="square.js"></script>
+    <script src="enemy.js"></script>
+    <script src="chest.js"></script>
+    <script src="game.js"></script>
+</body>
+</html>
