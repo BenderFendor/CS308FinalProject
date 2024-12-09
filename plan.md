@@ -42,6 +42,8 @@ Building upon the drag bounce mechanics from Project 3, creating a dungeon-crawl
 ## Development Stages
 ### Stage 1: Core Mechanics
 - Single test room implementation
+    - It has one chest
+    - Three test enemies
 - Player Logic
     - Player has a HP bar that shows above his head
     - Player isn't damage from colliding with the enemies
@@ -64,20 +66,89 @@ Building upon the drag bounce mechanics from Project 3, creating a dungeon-crawl
         - Check conditions such as player's position and enemy's state
         - Add randomness to shooting intervals
         - Implement cooldowns to prevent continuous shooting
-        
-- Chest mechanics
-    - When you collide with a chest it pauses the game and you get a pop up asking if you what an upgrade and gives you a hint of the type
-    - The upgrade could be a debuff or buff the hint is only for the type of upgrade
+    - Chest mechanics
+        - Collision with chest triggers game pause
+        - Dialog popup system for upgrade choice
+        - Hint system for upgrade type
+            - Hint doesn't type you if it is positive or negative
+        - Random selection of buff/debuff
+        - When you open the chest it shows you the debuff or buff you got as dialog on the screen as well
+        - Effect categories:
+            - Health modifiers
+            - Speed adjustments
+            - Attack changes
+        - Visual feedback:
+            - Chest open/closed states
+            - Effect animations
+            - UI state changes
+        - Sound integration
+        - Persistent state tracking
+        - Remove the chest after it is opened
+        - Chest doesn't remove enemies it has them in the same state as there where when the chest was opened
 - Physics system testing
     - The player should have more weight then the enemies like if the player collides with an enemy the enemy goes farther then the player
 - Core gameplay loop
+
+#### Audio Framework
+- Basic sound effects implementation
+    - Player movement sounds
+    - Enemy shooting sounds
+    - Hit/damage feedback
+    - Chest opening sound
+    - Background music system
+
+#### Visual Feedback
+- Particle effects system
+    - Hit particles
+    - Damage numbers
+    - Enemy death effects
+    - Projectile trails
+- Screen shake effects
+    - On heavy hits
+    - On AOE attacks
+    - On chest opening
+
+#### UI Elements
+- Main HUD implementation
+    - Player health display
+    - Score counter
+    - Current room indicator
+- Pause menu
+    - Basic options
+    - Resume/quit functionality
+- Debug overlay
+    - FPS counter
+    - Enemy count
+    - Player stats
+
+
+
 
 ### Stage 2: Generation
 - Room generation system
 - Performance optimization
 - Tutorial research and implementation
 
+#### Game State Management
+- Basic save system
+    - Current health
+    - Active upgrades
+    - Room progress
+- Scene transitions
+    - Room transition effects
+    - Loading screens
+
 ### Stage 3: Polish
 - UI implementation
 - Sprite work
 - Final adjustments
+- Add a start screen and it would have the sound play and it wouldn't need to be muted
+- Screen boundaries
+    - Player containment
+    - Projectile cleanup
+- Camera system
+    - Basic follow
+    - Screen shake integration
+- Input buffer system
+    - Smooth controls
+    - Action queuing

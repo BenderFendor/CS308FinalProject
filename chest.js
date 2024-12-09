@@ -17,21 +17,63 @@ class Chest extends Square {
     open(player) {
         if (!this.isOpen) {
             this.isOpen = true;
-            this.generateLoot();
-            // Apply loot effect to player
-            switch (this.loot.type) {
-                case 'health':
-                    player.health += this.loot.value;
-                    break;
-                case 'speed':
-                    player.vx *= this.loot.value;
-                    player.vy *= this.loot.value;
-                    break;
-                case 'size':
-                    player.width *= this.loot.value;
-                    player.height *= this.loot.value;
-                    break;
-            }
+            this.generateLoot(); // Generate loot first
+            
+            const dialogElement = document.createElement('div');
+            dialogElement.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: rgba(0, 0, 0, 0.9);
+                padding: 20px;
+                border: 2px solid gold;
+                color: white;
+                z-index: 1000;
+            `;
+            
+            dialogElement.innerHTML = `
+                <h2>Mysterious Chest</h2>
+                <p>${this.getHint()}</p>
+                <button onclick="this.parentElement.remove(); isGamePaused = false;">Open Chest</button>
+            `;
+            
+            document.body.appendChild(dialogElement);
+            isGamePaused = true;
+            
+            // Apply upgrade when dialog is closed
+            dialogElement.querySelector('button').onclick = () => {
+                this.applyUpgrade(player);
+                dialogElement.remove();
+                isGamePaused = false;
+            };
+        }
+    }
+
+    getHint() {
+        const hints = {
+            health: "A healing aura emanates from within...",
+            speed: "The chest seems to vibrate with kinetic energy...",
+            size: "A transformative power lurks inside..."
+        };
+        return hints[this.loot.type] || "An aura surrounds the chest...";
+    }
+
+    applyUpgrade(player) {
+        this.generateLoot();
+        // Apply loot effect to player
+        switch (this.loot.type) {
+            case 'health':
+                player.health += this.loot.value;
+                break;
+            case 'speed':
+                player.vx *= this.loot.value;
+                player.vy *= this.loot.value;
+                break;
+            case 'size':
+                player.width *= this.loot.value;
+                player.height *= this.loot.value;
+                break;
         }
     }
 

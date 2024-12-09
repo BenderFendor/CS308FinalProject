@@ -72,14 +72,41 @@
         </div>
     </div>
 
-    <audio id="bounce" preload="auto" style="display:none" src="bounce.mp3"></audio>
-    <audio id="scoresfx" preload="auto" style="display:none" src="score.wav"></audio>
-    <audio id="gameoversfx" preload="auto" style="display:none" src="gameover.wav"></audio>
-    <audio id="bgMusic" preload="auto" style="display:none" loop src="bgmusic.mp3"></audio>
+    <!-- Upgrade Dialog -->
+    <div id="upgrade-dialog" style="display: none;">
+        <p id="upgrade-hint">An aura surrounds the chest...</p>
+        <button id="upgrade-confirm">Open Chest</button>
+    </div>
 
+    <audio id="bounce" preload="auto" style="display:none" src="bounce.mp3" muted></audio>
+    <audio id="scoresfx" preload="auto" style="display:none" src="score.wav" muted></audio>
+    <audio id="gameoversfx" preload="auto" style="display:none" src="gameover.wav" muted></audio>
+    <audio id="bgMusic" preload="auto" style="display:none" loop src="bgmusic.mp3" muted></audio>
+
+    <!-- Update script order -->
+    <script src="ParticleSystem.js"></script>
+    <script src="Camera.js"></script>
     <script src="square.js"></script>
     <script src="enemy.js"></script>
     <script src="chest.js"></script>
+    <script src="RoomManager.js"></script>
     <script src="game.js"></script>
+
+    <script>
+        // Handle upgrade dialog logic
+        function showUpgradeDialog(hint, onConfirm) {
+            const dialog = document.getElementById('upgrade-dialog');
+            const hintElement = document.getElementById('upgrade-hint');
+            const confirmButton = document.getElementById('upgrade-confirm');
+
+            hintElement.textContent = hint;
+            dialog.style.display = 'block';
+
+            confirmButton.onclick = () => {
+                dialog.style.display = 'none';
+                onConfirm();
+            };
+        }
+    </script>
 </body>
 </html>
