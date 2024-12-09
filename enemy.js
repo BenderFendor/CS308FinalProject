@@ -1,206 +1,189 @@
 class Enemy extends Square {
-    constructor(x, y, width, height, imgSrc, type = 'basic') {
-        // Randomize size between 30 and 60
-        const randomSize = Math.random() * 30 + 30;
-        super(x, y, randomSize, randomSize, imgSrc);
-        
-        this.maxHealth = 3;
-        this.health = this.maxHealth;
-        this.isPlayer = false;
-
-        // Randomize movement speed
-        this.movementSpeed = Math.random() * 2 + 1; // Speed between 1 and 3
-
-        // Attack properties
-        this.attackCooldown = 0;
-        this.attackPatterns = [
-            { type: 'basic', probability: 0.7 },
-            { type: 'power', probability: 0.2 },
-            { type: 'aoe', probability: 0.1 }
-        ];
-        this.projectiles = [];
-        this.active = true;
-        this.attackType = 'basic'; // 'basic', 'power', 'aoe'
-        this.chargingAttack = false;
-        this.chargeTimer = 0;
-        this.flashState = false;
+    // Represents an enemy in the game
+    constructor(x, y, width, height, type = 'basic') {
+        super(x, y, width, height);
         this.type = type;
-    }
-
-    shoot(playerX, playerY) {
-        const dx = playerX - (this.x + this.width/2);
-        const dy = playerY - (this.y + this.height/2);
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        
-        switch(this.attackType) {
-            case 'basic': // 70% chance, normal shot
-                this.projectiles.push({
-                    x: this.x + this.width/2,
-                    y: this.y + this.height/2,
-                    vx: (dx / distance) * this.projectileSpeed,
-                    vy: (dy / distance) * this.projectileSpeed,
-                    size: this.projectileSize,
-                    damage: 1
-                });
-                break;
-            case 'power': // 20% chance, bigger slower shot
-                this.projectiles.push({
-                    x: this.x + this.width/2,
-                    y: this.y + this.height/2,
-                    vx: (dx / distance) * (this.projectileSpeed * 0.5),
-                    vy: (dy / distance) * (this.projectileSpeed * 0.5),
-                    size: this.projectileSize * 2,
-                    damage: 2
-                });
-                break;
-            case 'aoe': // 10% chance, area attack
-                for(let i = 0; i < 8; i++) {
-                    const angle = (Math.PI * 2 * i) / 8;
-                    this.projectiles.push({
-                        x: this.x + this.width/2,
-                        y: this.y + this.height/2,
-                        vx: Math.cos(angle) * this.projectileSpeed,
-                        vy: Math.sin(angle) * this.projectileSpeed,
-                        size: this.projectileSize * 1.5,
-                        damage: 1.5
-                    });
-                }
-                break;
+        // Adjust attributes based on enemy type
+        if (this.type === 'earth') {
+            this.health = 2;
+            this.speed = 1;
+            this.color = 'green';
+        } else if (this.type === 'solar') {
+            this.health = 3;
+            this.speed = 1.2;
+            this.color = 'orange';
+        } else if (this.type === 'blackhole') {
+            this.health = 5;
+            this.speed = 1.5;
+            this.color = 'purple';
+        } else {
+            this.health = 2;
+            this.speed = 1;
+            this.color = 'red';
         }
+        this.maxHealth = this.health;
+        this.active = true;
+        this.mass = 1; // Lower mass than player for bouncing
+        this.attackCooldowns = {
+            basic: 0,
+            slow: 0,
+            aoe: 0
+        };
+        this.cooldownTimes = {
+            basic: 120,    // 2 seconds between basic shots
+            slow: 240,     // 4 seconds between slow shots
+            aoe: 360      // 6 seconds between AOE attacks
+        };
+        this.lastCollisionTime = 0; // Prevent multiple collisions
     }
 
-    update(canvas, playerX, playerY) {
+    update(player, walls) {
         if (!this.active) return;
 
-        // Increment shoot timer
-        this.shootTimer++;
+        // Update position and handle movement
+        if (!this.isCharging) {
+            const dx = player.x - this.x;
+            const dy = player.y - this.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance > 0) {
+                this.vx = (dx / distance) * this.speed;
+                this.vy = (dy / distance) * this.speed;
+                this.x += this.vx;
+                this.y += this.vy;
+            }
+        }
 
-        // Update movement
-        this.angle += 0.05;
-        const dx = playerX - this.x;
-        const dy = playerY - this.y;
+        // Handle attack cooldowns
+        Object.keys(this.attackCooldowns).forEach(key => {
+            if (this.attackCooldowns[key] > 0) {
+                this.attackCooldowns[key]--;
+            }
+        });
+
+        // Check for player collision and damage
+        if (this.collidesWith(player)) {
+            const currentTime = Date.now();
+            if (currentTime - this.lastCollisionTime > 100) { // Prevent multiple hits
+                const impactSpeed = Math.sqrt(
+                    Math.pow(player.vx - this.vx, 2) + 
+                    Math.pow(player.vy - this.vy, 2)
+                );
+                
+                if (impactSpeed > 5) {
+                    this.takeDamage(1);
+                    particleSystem.addHitParticle(this.x + this.width/2, this.y + this.height/2);
+                }
+                this.lastCollisionTime = currentTime;
+            }
+        }
+
+        // Perform attacks
+        this.performAttack(player);
+    }
+
+    performAttack(player) {
+        let rand = Math.random();
+        if (rand < 0.7 && this.attackCooldowns.basic === 0) {
+            this.basicShot(player);
+            this.attackCooldowns.basic = this.cooldownTimes.basic;
+        } else if (rand < 0.9 && this.attackCooldowns.slow === 0) {
+            this.slowShot(player);
+            this.attackCooldowns.slow = this.cooldownTimes.slow;
+        } else if (this.attackCooldowns.aoe === 0) {
+            this.aoeAttack();
+            this.attackCooldowns.aoe = this.cooldownTimes.aoe;
+        }
+    }
+
+    basicShot(player) {
+        // Basic projectile towards player with reduced speed
+        const angle = Math.atan2(player.y - this.y, player.x - this.x);
+        const speed = 8; // Reduced from 15
+        const vx = Math.cos(angle) * speed;
+        const vy = Math.sin(angle) * speed;
+        const projectile = new Projectile(this.x, this.y, vx, vy, 1, 'basic');
+        projectiles.push(projectile);
+    }
+
+    slowShot(player) {
+        // Slow but damaging projectile with reduced speed
+        const angle = Math.atan2(player.y - this.y, player.x - this.x);
+        const speed = 2; // Reduced from 3
+        const vx = Math.cos(angle) * speed;
+        const vy = Math.sin(angle) * speed;
+        const projectile = new Projectile(this.x, this.y, vx, vy, 2, 'slow');
+        projectiles.push(projectile);
+    }
+
+    aoeAttack() {
+        // Charge up for AOE attack
+        this.isCharging = true;
+        setTimeout(() => {
+            this.isCharging = false;
+            // Create an AOE effect
+            const aoe = new AOEAttack(this.x, this.y, 50, 2);
+            projectiles.push(aoe);
+        }, 500); // 500ms charge time
+    }
+
+    handleCollisionWithPlayer(player) {
+        if (this.isResolvingCollision) return;
+        
+        super.resolveCollision(player);
+        
+        // Check collision damage
+        const impactSpeed = Math.sqrt(
+            Math.pow(player.vx - this.vx, 2) + 
+            Math.pow(player.vy - this.vy, 2)
+        );
+        
+        if (impactSpeed > 5) {
+            this.takeDamage(1);
+        }
+    }
+
+    handleCollisionWithWall(wall) {
+        // Similar collision response as in Square class
+        // ...collision handling code...
+    }
+
+    resolveCollision(other) {
+        // Calculate collision response
+        const dx = other.x - this.x;
+        const dy = other.y - this.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
-        
-        // Only move if not charging attack
-        if (!this.chargingAttack && distance > 0) {
-            this.vx = (dx / distance) * this.movementSpeed + Math.sin(this.angle) * this.wobble;
-            this.vy = (dy / distance) * this.movementSpeed + Math.cos(this.angle) * this.wobble;
+
+        if (distance === 0) return;
+
+        // Normalize collision vector
+        const nx = dx / distance;
+        const ny = dy / distance;
+
+        // Calculate relative velocity
+        const dvx = this.vx - (other.vx || 0);
+        const dvy = this.vy - (other.vy || 0);
+
+        // Calculate impulse
+        const impulse = -(2 * (dvx * nx + dvy * ny)) / 
+                        (1/this.mass + (other.mass ? 1/other.mass : 0));
+
+        // Apply impulse
+        this.vx += impulse * nx / this.mass;
+        this.vy += impulse * ny / this.mass;
+
+        if (other.vx !== undefined) {
+            other.vx -= impulse * nx / other.mass;
+            other.vy -= impulse * ny / other.mass;
         }
-
-        // Attack pattern selection
-        if (this.shootTimer >= this.shootInterval) {
-            const roll = Math.random();
-            if (roll < 0.1 && !this.chargingAttack) { // AOE attack
-                this.chargingAttack = true;
-                this.chargeTimer = 30; // Half second charge
-                this.attackType = 'aoe';
-            } else if (roll < 0.3) { // Power shot
-                this.attackType = 'power';
-                this.shoot(playerX, playerY);
-                this.shootTimer = 0;
-            } else { // Basic shot
-                this.attackType = 'basic';
-                this.shoot(playerX, playerY);
-                this.shootTimer = 0;
-            }
-        }
-
-        if (this.chargingAttack) {
-            this.chargeTimer--;
-            this.flashState = !this.flashState;
-            if (this.chargeTimer <= 0) {
-                this.shoot(playerX, playerY);
-                this.chargingAttack = false;
-            }
-        }
-
-        // Update projectiles
-        for (let i = this.projectiles.length - 1; i >= 0; i--) {
-            const proj = this.projectiles[i];
-            proj.x += proj.vx;
-            proj.y += proj.vy;
-
-            // Remove projectiles that are off screen
-            if (proj.x < 0 || proj.x > canvas.width || 
-                proj.y < 0 || proj.y > canvas.height) {
-                this.projectiles.splice(i, 1);
-            }
-        }
-
-        super.update(canvas);
-    }
-
-    updateAI(player, room) {
-        if (this.chargingAttack) {
-            this.updateChargeAttack();
-            return;
-        }
-
-        // Calculate distance to player
-        const dist = this.getDistanceToPlayer(player);
-        
-        // Choose behavior based on distance
-        if (dist < 200) {
-            this.evadePlayer(player);
-        } else if (dist > 400) {
-            this.approachPlayer(player);
-        } else {
-            this.maintainDistance(player);
-        }
-
-        // Attack selection logic
-        this.updateAttackPattern(player);
-    }
-
-    takeDamage() {
-        this.health--;
-        // Add particle effect on hit
-        particleSystem.addHitParticle(this.x + this.width/2, this.y + this.height/2, "255,0,0");
-        // Add screen shake
-        camera.shake(3);
-        
-        if (this.health <= 0) {
-            this.active = false;
-            // Add death particles
-            for(let i = 0; i < 15; i++) {
-                particleSystem.addHitParticle(this.x + this.width/2, this.y + this.height/2, "255,0,0");
-            }
-            camera.shake(8);
-            return true;
-        }
-        return false;
     }
 
     draw(ctx) {
-        if (!this.active) return;
-        
-        // Change color based on charging state
-        if (this.chargingAttack) {
-            ctx.fillStyle = this.flashState ? 'red' : 'white';
-        } else {
-            ctx.fillStyle = `rgb(255, ${(this.health/3) * 255}, ${(this.health/3) * 255})`;
-        }
-        
+        // Draw the enemy
+        ctx.fillStyle = this.color; // Enemy color
         ctx.fillRect(this.x, this.y, this.width, this.height);
-        
-        // Health bar
-        ctx.fillStyle = 'green';
-        ctx.fillRect(this.x, this.y - 10, (this.width * this.health) / 3, 5);
-        
-        // Draw angry eyes
-        ctx.fillStyle = 'black';
-        ctx.fillRect(this.x + this.width*0.2, this.y + this.height*0.2, this.width*0.1, this.height*0.1);
-        ctx.fillRect(this.x + this.width*0.7, this.y + this.height*0.2, this.width*0.1, this.height*0.1);
 
-        // Draw projectiles
-        ctx.fillStyle = 'yellow';
-        this.projectiles.forEach(proj => {
-            ctx.beginPath();
-            ctx.arc(proj.x, proj.y, proj.size/2, 0, Math.PI * 2);
-            ctx.fill();
-        });
-
-        // Draw HP bar
+        // Draw health bar
         const barWidth = this.width;
         const barHeight = 5;
         const barY = this.y - 10;
@@ -209,173 +192,118 @@ class Enemy extends Square {
         ctx.fillRect(this.x, barY, barWidth, barHeight);
 
         ctx.fillStyle = 'green';
-        ctx.fillRect(this.x, barY, barWidth * (this.health / this.maxHealth), barHeight);
-    }
+        ctx.fillRect(this.x, barY, (barWidth * this.health) / this.maxHealth, barHeight);
 
-    checkProjectileCollision(player) {
-        for (let i = this.projectiles.length - 1; i >= 0; i--) {
-            const proj = this.projectiles[i];
-            if (proj.x + proj.size > player.x && 
-                proj.x < player.x + player.width &&
-                proj.y + proj.size > player.y && 
-                proj.y < player.y + player.height) {
-                this.projectiles.splice(i, 1);
-                return true; // Hit detected
-            }
-        }
-        return false;
-    }
-
-    basicAttack(playerX, playerY) {
-        const dx = playerX - (this.x + this.width/2);
-        const dy = playerY - (this.y + this.height/2);
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        
-        this.projectiles.push({
-            x: this.x + this.width/2,
-            y: this.y + this.height/2,
-            vx: (dx / distance) * this.projectileSpeed,
-            vy: (dy / distance) * this.projectileSpeed,
-            size: this.projectileSize,
-            damage: 1
-        });
-    }
-
-    powerAttack(playerX, playerY) {
-        const dx = playerX - (this.x + this.width/2);
-        const dy = playerY - (this.y + this.height/2);
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        
-        this.projectiles.push({
-            x: this.x + this.width/2,
-            y: this.y + this.height/2,
-            vx: (dx / distance) * (this.projectileSpeed * 0.5),
-            vy: (dy / distance) * (this.projectileSpeed * 0.5),
-            size: this.projectileSize * 2,
-            damage: 2
-        });
-    }
-
-    aoeAttack(playerX, playerY) {
-        for(let i = 0; i < 8; i++) {
-            const angle = (Math.PI * 2 * i) / 8;
-            this.projectiles.push({
-                x: this.x + this.width/2,
-                y: this.y + this.height/2,
-                vx: Math.cos(angle) * this.projectileSpeed,
-                vy: Math.sin(angle) * this.projectileSpeed,
-                size: this.projectileSize * 1.5,
-                damage: 1.5
-            });
+        // Visual feedback for AOE charging
+        if (this.isCharging) {
+            ctx.save();
+            ctx.globalAlpha = 0.5;
+            ctx.fillStyle = 'yellow';
+            ctx.fillRect(this.x, this.y, this.width, this.height);
+            ctx.restore();
         }
     }
 
-    getDistanceToPlayer(player) {
-        const dx = player.x - this.x;
-        const dy = player.y - this.y;
-        return Math.sqrt(dx * dx + dy * dy);
+    collidesWith(square) {
+        // Check for collision with a Square (e.g., the player)
+        return !(
+            this.x + this.width < square.x ||
+            this.x > square.x + square.width ||
+            this.y + this.height < square.y ||
+            this.y > square.y + square.height
+        );
     }
 
-    evadePlayer(player) {
-        const dx = this.x - player.x;
-        const dy = this.y - player.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        
-        if (dist > 0) {
-            this.vx = (dx / dist) * this.movementSpeed;
-            this.vy = (dy / dist) * this.movementSpeed;
-        }
-    }
-
-    approachPlayer(player) {
-        const dx = player.x - this.x;
-        const dy = player.y - this.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        
-        if (dist > 0) {
-            this.vx = (dx / dist) * this.movementSpeed * 0.5;
-            this.vy = (dy / dist) * this.movementSpeed * 0.5;
-        }
-    }
-
-    maintainDistance(player) {
-        const dx = player.x - this.x;
-        const dy = player.y - this.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        
-        if (dist > 0) {
-            this.vx = (dx / dist) * this.movementSpeed * 0.1;
-            this.vy = (dy / dist) * this.movementSpeed * 0.1;
-        }
-    }
-
-    updateAttackPattern(player) {
-        if (this.shootTimer >= this.shootInterval) {
-            const roll = Math.random();
-            let selectedPattern = null;
+    takeDamage(amount) {
+        if (this.active) {
+            this.health -= amount;
+            // Create hit effect
+            particleSystem.addHitParticle(
+                this.x + this.width/2, 
+                this.y + this.height/2, 
+                "255,0,0"
+            );
             
-            if (roll < this.attackPatterns.aoe.probability) {
-                selectedPattern = this.attackPatterns.aoe;
-            } else if (roll < this.attackPatterns.power.probability + this.attackPatterns.aoe.probability) {
-                selectedPattern = this.attackPatterns.power;
-            } else {
-                selectedPattern = this.attackPatterns.basic;
-            }
-            
-            selectedPattern.execute(player.x, player.y);
-            this.shootTimer = 0;
-        }
-    }
-
-    selectAttack(player) {
-        const roll = Math.random();
-        let cumulativeProbability = 0;
-        for (let pattern of this.attackPatterns) {
-            cumulativeProbability += pattern.probability;
-            if (roll <= cumulativeProbability) {
-                this.executeAttack(pattern.type, player);
-                break;
+            if (this.health <= 0) {
+                this.active = false;
+                // Create death effect
+                for (let i = 0; i < 8; i++) {
+                    particleSystem.addHitParticle(
+                        this.x + this.width/2, 
+                        this.y + this.height/2, 
+                        "255,0,0"
+                    );
+                }
             }
         }
     }
+}
 
-    executeAttack(type, player) {
-        switch (type) {
-            case 'basic':
-                this.attackCooldown = 60;
-                this.shootProjectile(player, 5, 4);
-                break;
-            case 'power':
-                this.attackCooldown = 90;
-                this.shootProjectile(player, 10, 2);
-                break;
-            case 'aoe':
-                this.attackCooldown = 120;
-                this.chargeAOEAttack();
-                break;
+// Projectile class
+class Projectile {
+    constructor(x, y, vx, vy, damage, type) {
+        this.x = x;
+        this.y = y;
+        this.vx = vx;
+        this.vy = vy;
+        this.damage = damage;
+        this.type = type;
+        this.active = true;
+        this.radius = type === 'slow' ? 8 : 4;
+    }
+
+    update() {
+        this.x += this.vx;
+        this.y += this.vy;
+        // Deactivate if out of bounds
+        if (this.x < 0 || this.x > currentRoom.width || this.y < 0 || this.y > currentRoom.height) {
+            this.active = false;
         }
     }
 
-    shootProjectile(player, size, speed) {
-        const dx = player.x - this.x;
-        const dy = player.y - this.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-
-        this.projectiles.push({
-            x: this.x + this.width / 2,
-            y: this.y + this.height / 2,
-            vx: (dx / distance) * speed,
-            vy: (dy / distance) * speed,
-            size: size
-        });
+    draw(ctx) {
+        ctx.fillStyle = this.type === 'slow' ? 'purple' : 'white';
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fill();
     }
 
-    chargeAOEAttack() {
-        this.charging = true;
-        this.chargeTime = 30; // Half a second at 60fps
+    collidesWith(entity) {
+        // Circle-rectangle collision detection
+        const distX = Math.abs(this.x - entity.x - entity.width / 2);
+        const distY = Math.abs(this.y - entity.y - entity.height / 2);
+
+        if (distX > (entity.width / 2 + this.radius)) return false;
+        if (distY > (entity.height / 2 + this.radius)) return false;
+
+        if (distX <= (entity.width / 2)) return true;
+        if (distY <= (entity.height / 2)) return true;
+
+        const dx = distX - entity.width / 2;
+        const dy = distY - entity.height / 2;
+        return (dx * dx + dy * dy <= (this.radius * this.radius));
+    }
+}
+
+// AOE Attack class
+class AOEAttack extends Projectile {
+    constructor(x, y, radius, damage) {
+        super(x, y, 0, 0, damage, 'aoe');
+        this.radius = radius;
+        this.duration = 30; // Lasts for 30 frames
     }
 
-    updateProjectiles() {
-        // ...existing code for updating and drawing projectiles...
+    update() {
+        this.duration--;
+        if (this.duration <= 0) {
+            this.active = false;
+        }
+    }
+
+    draw(ctx) {
+        ctx.fillStyle = 'orange';
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fill();
     }
 }

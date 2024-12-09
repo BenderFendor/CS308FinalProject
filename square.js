@@ -16,13 +16,17 @@ class Square {
         this.isPlayer = false; // To distinguish player from other objects
         this.invulnerable = false; // For damage immunity frames
         this.invulnerableTimer = 0;
-
+        this.speed = 1
+        this.mass = this.isPlayer ? 2 : 1; // Player has more mass
         if (imgSrc) {
             this.img = new Image();
             this.img.src = imgSrc;
         } else {
             this.img = null;
         }
+        this.lastValidX = x;  // Add last valid position tracking
+        this.lastValidY = y;
+        this.colliding = false;  // Track collision state
     }
 
     startDrag(mouseX, mouseY) {
@@ -49,33 +53,19 @@ class Square {
 
     update(canvas) {
         if (!this.isDragging) {
+            // Store last valid position before movement
+            this.lastValidX = this.x;
+            this.lastValidY = this.y;
+
+            // Apply movement
             this.x += this.vx;
             this.y += this.vy;
-    
+            
+            // Apply friction
             this.vx *= 0.98;
             this.vy *= 0.98;
-    
-            // Collision detection with canvas boundaries
-            if (this.x < 20) { // Add wall thickness
-                this.x = 20;
-                this.vx = -this.vx * 0.8;
-                if (bounceSound) bounceSound.play();
-            }
-            if (this.x + this.width > canvas.width - 20) {
-                this.x = canvas.width - this.width - 20;
-                this.vx = -this.vx * 0.8;
-                if (bounceSound) bounceSound.play();
-            }
-            if (this.y < 20) {
-                this.y = 20;
-                this.vy = -this.vy * 0.8;
-                if (bounceSound) bounceSound.play();
-            }
-            if (this.y + this.height > canvas.height - 20) {
-                this.y = canvas.height - this.height - 20;
-                this.vy = -this.vy * 0.8;
-                if (bounceSound) bounceSound.play();
-            }
+
+            this.colliding = false;
             
             // Add rotation based on velocity
             this.rotation += Math.sqrt(this.vx * this.vx + this.vy * this.vy) * 0.05;
@@ -131,18 +121,48 @@ class Square {
         // Health bar
         ctx.fillStyle = 'green';
         ctx.fillRect(this.x, barY, barWidth * (this.health / this.maxHealth), barHeight);
+
+        // Add debug visualization
+        if (this.debug) {
+            // Draw velocity vector
+            ctx.beginPath();
+            ctx.strokeStyle = 'yellow';
+            ctx.moveTo(this.x + this.width/2, this.y + this.height/2);
+            ctx.lineTo(this.x + this.width/2 + this.vx * 10, 
+                      this.y + this.height/2 + this.vy * 10);
+            ctx.stroke();
+
+            // Draw collision box
+            ctx.strokeStyle = this.colliding ? 'red' : 'lime';
+            ctx.strokeRect(this.x, this.y, this.width, this.height);
+        }
     }
 
-    takeDamage() {
-        if (!this.invulnerable && !this.isPlayer) { // Player doesn't take damage from collisions
-            this.health--;
+    takeDamage(amount) {
+        if (!this.invulnerable) {
+            this.health -= amount;
             this.invulnerable = true;
-            this.invulnerableTimer = 60; // 1 second at 60fps
+            this.invulnerableTimer = 60; // 1 second immunity
+            
+            // Handle game over if player dies
+            if (this.isPlayer && this.health <= 0) {
+                gameOver();
+            }
+
+            // Flash effect when hit
+            if (this.isPlayer) {
+                camera.shake(5);
+                particleSystem.addHitParticle(
+                    this.x + this.width/2,
+                    this.y + this.height/2,
+                    "255,0,0"
+                );
+            }
         }
     }
 
     collidesWith(other) {
-        // Basic collision check
+        // Check for collision with another object
         if (!(this.x < other.x + other.width &&
               this.x + this.width > other.x &&
               this.y < other.y + other.height &&
@@ -150,49 +170,175 @@ class Square {
             return false;
         }
 
-        // If it's a player-enemy collision, check velocity
-        if (this.isPlayer && other instanceof Enemy) {
-            // Player damages enemy on collision
-            other.takeDamage();
+        // Calculate overlap on both axes
+        const overlapX = (this.x + this.width / 2) - (other.x + other.width / 2);
+        const overlapY = (this.y + this.height / 2) - (other.y + other.height / 2);
+        const halfWidths = (this.width + other.width) / 2;
+        const halfHeights = (this.height + other.height) / 2;
 
-            // Apply physics: player has more weight
-            other.vx = this.vx * 1.5;
-            other.vy = this.vy * 1.5;
-            this.vx *= 0.7;
-            this.vy *= 0.7;
+        // Determine collision side and adjust position and velocity
+        if (Math.abs(overlapX) < halfWidths && Math.abs(overlapY) < halfHeights) {
+            const offsetX = halfWidths - Math.abs(overlapX);
+            const offsetY = halfHeights - Math.abs(overlapY);
 
-            return true;
+            if (offsetX < offsetY) {
+                // Horizontal collision
+                if (overlapX > 0) {
+                    this.x += offsetX;
+                } else {
+                    this.x -= offsetX;
+                }
+                this.vx = -this.vx * 0.8;
+            } else {
+                // Vertical collision
+                if (overlapY > 0) {
+                    this.y += offsetY;
+                } else {
+                    this.y -= offsetY;
+                }
+                this.vy = -this.vy * 0.8;
+            }
         }
 
-        // Regular collision response
-        const overlapX = Math.min(
-            this.x + this.width - other.x,
-            other.x + other.width - this.x
-        );
-        const overlapY = Math.min(
-            this.y + this.height - other.y,
-            other.y + other.height - this.y
-        );
+        // Adjust collision response based on masses
+        const totalMass = this.mass + other.mass;
+        const diffMass = this.mass - other.mass;
+            
+        const newVx = (this.vx * diffMass + 2 * other.mass * other.vx) / totalMass;
+        const newVy = (this.vy * diffMass + 2 * other.mass * other.vy) / totalMass;
 
-        // Determine collision side
-        if (overlapX < overlapY) {
-            // Horizontal collision
-            if (this.x < other.x) {
-                this.x = other.x - this.width;
-            } else {
-                this.x = other.x + other.width;
-            }
-            this.vx = -this.vx * 0.8;
-        } else {
-            // Vertical collision
-            if (this.y < other.y) {
-                this.y = other.y - this.height;
-            } else {
-                this.y = other.y + other.height;
-            }
-            this.vy = -this.vy * 0.8;
-        }
+        this.vx = newVx * 0.8; // Dampen the velocity
+        this.vy = newVy * 0.8;
 
         return true;
+    }
+
+    resolveCollision(other) {
+        // Prevent handling multiple collisions in same frame
+        if (this.isResolvingCollision) return;
+        this.isResolvingCollision = true;
+
+        console.log(`Collision: ${this.isPlayer ? 'Player' : 'Entity'} collided with`, 
+                    other.constructor.name,
+                    `at (${this.x}, ${this.y})`);
+
+        // Log velocity changes
+        const oldVx = this.vx;
+        const oldVy = this.vy;
+
+        // Handle wall collision with priority
+        if (other instanceof Wall) {
+            this.resolveWallCollision(other);
+            this.isResolvingCollision = false;
+            return;
+        }
+
+        // Calculate separation vector
+        const dx = this.x + this.width/2 - (other.x + other.width/2);
+        const dy = this.y + this.height/2 - (other.y + other.height/2);
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        if (distance === 0) {
+            this.isResolvingCollision = false;
+            return;
+        }
+
+        // Normalize separation
+        const nx = dx / distance;
+        const ny = dy / distance;
+
+        // Calculate minimum separation distance
+        const minSeparation = (this.width + other.width) / 2;
+        const separation = minSeparation - distance;
+
+        // Separate objects
+        const totalMass = this.mass + (other.mass || 1);
+        const ratio1 = this.mass / totalMass;
+        const ratio2 = (other.mass || 1) / totalMass;
+
+        this.x += nx * separation * ratio2;
+        this.y += ny * separation * ratio2;
+        
+        if (other.mass) { // Only move other object if it has mass
+            other.x -= nx * separation * ratio1;
+            other.y -= ny * separation * ratio1;
+        }
+
+        // Calculate new velocities
+        const relativeVelocityX = this.vx - (other.vx || 0);
+        const relativeVelocityY = this.vy - (other.vy || 0);
+        const velocityAlongNormal = relativeVelocityX * nx + relativeVelocityY * ny;
+
+        // Only bounce if objects are moving toward each other
+        if (velocityAlongNormal > 0) {
+            this.isResolvingCollision = false;
+            return;
+        }
+
+        const restitution = 0.8; // Bounce factor
+        const impulseMagnitude = -(1 + restitution) * velocityAlongNormal / 
+                                ((1/this.mass) + (other.mass ? 1/other.mass : 0));
+
+        // Apply impulse
+        this.vx += impulseMagnitude * nx / this.mass;
+        this.vy += impulseMagnitude * ny / this.mass;
+        
+        if (other.mass) {
+            other.vx -= impulseMagnitude * nx / other.mass;
+            other.vy -= impulseMagnitude * ny / other.mass;
+        }
+
+        // Apply minimum velocity threshold
+        const minVelocity = 0.1;
+        if (Math.abs(this.vx) < minVelocity) this.vx = 0;
+        if (Math.abs(this.vy) < minVelocity) this.vy = 0;
+
+        console.log('Velocity changed from:', 
+                    `(${oldVx.toFixed(2)}, ${oldVy.toFixed(2)})`,
+                    'to:',
+                    `(${this.vx.toFixed(2)}, ${this.vy.toFixed(2)})`);
+
+        this.isResolvingCollision = false;
+    }
+
+    resolveWallCollision(wall) {
+        const overlapX = (this.width + wall.width) / 2 - 
+                        Math.abs((this.x + this.width/2) - (wall.x + wall.width/2));
+        const overlapY = (this.height + wall.height) / 2 - 
+                        Math.abs((this.y + this.height/2) - (wall.y + wall.height/2));
+
+        if (overlapX < overlapY) {
+            this.x += overlapX * (this.x < wall.x ? -1 : 1);
+            this.vx = -this.vx * 0.5;
+        } else {
+            this.y += overlapY * (this.y < wall.y ? -1 : 1);
+            this.vy = -this.vy * 0.5;
+        }
+    }
+}
+
+class Wall {
+    // Represents a wall that the player can collide with
+    constructor(x, y, width, height) {
+        this.x = x;
+        this.y = y;
+        this.width = width;
+        this.height = height;
+    }
+
+    draw(ctx) {
+        // Draw the wall as a background element
+        ctx.fillStyle = '#444'; // Dark gray color for walls
+        ctx.fillRect(this.x, this.y, this.width, this.height);
+    }
+
+    collidesWith(square) {
+        // Check for collision with a Square object
+        return !(
+            this.x + this.width < square.x ||
+            this.x > square.x + square.width ||
+            this.y + this.height < square.y ||
+            this.y > square.y + square.height
+        );
     }
 }

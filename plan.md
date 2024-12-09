@@ -16,15 +16,15 @@ Building upon the drag bounce mechanics from Project 3, creating a dungeon-crawl
     1. Earth
     2. Solar
     3. Gravity/Black Hole (final zone)
-- Three rooms per zone, one containing a chest
+- Three rooms of each element, one containing a chest
 - Final boss: Black Hole entity
 
 ### Combat System
 - Player bounces on enemies to defeat them
 - Enemies shoot projectiles
 - Player starts with 5 hearts
-- 3-4 basic enemy types
-- 3-4 unique boss encounters
+- 2 basic enemy types
+- 1 unique boss encounters
 
 ### Upgrade System
 - Random chest encounters
@@ -121,14 +121,9 @@ Building upon the drag bounce mechanics from Project 3, creating a dungeon-crawl
     - Enemy count
     - Player stats
 
-
-
-
 ### Stage 2: Generation
 - Room generation system
-- Performance optimization
-- Tutorial research and implementation
-
+    - It just needs three rooms one earht one solor and one gravity
 #### Game State Management
 - Basic save system
     - Current health
@@ -152,3 +147,32 @@ Building upon the drag bounce mechanics from Project 3, creating a dungeon-crawl
 - Input buffer system
     - Smooth controls
     - Action queuing
+
+# Implementation Plan
+
+## Earth Level
+- Introduce basic gameplay mechanics.
+- Enemies:
+  - Type: earth
+  - Health: 2
+  - Speed: 1
+- Background: Earth scenery.
+- Objective: Defeat all enemies to proceed.
+
+## Solar Level
+- Increase difficulty with more enemies.
+- Enemies:
+  - Type: solar
+  - Health: 3
+  - Speed: 1.2
+- Background: Solar system imagery.
+- Objective: Collect chests and defeat enemies.
+
+## Black Hole Level
+- Highest difficulty with strongest enemies.
+- Enemies:
+  - Type: blackhole
+  - Health: 5
+  - Speed: 1.5
+- Background: Black hole visuals.
+- Objective: Survive and defeat all enemies.

@@ -1,8 +1,9 @@
 class Chest extends Square {
     constructor(x, y) {
-        super(x, y, 40, 40, 'path/to/chest-image.png');
+        super(x, y, 40, 40, 'chest.png');
         this.isOpen = false;
         this.loot = null;
+        this.shouldRemove = false; // Add removal flag
     }
 
     generateLoot() {
@@ -32,10 +33,11 @@ class Chest extends Square {
                 z-index: 1000;
             `;
             
+            const lootType = this.loot.value > 1 ? 'buff' : 'debuff';
             dialogElement.innerHTML = `
                 <h2>Mysterious Chest</h2>
                 <p>${this.getHint()}</p>
-                <button onclick="this.parentElement.remove(); isGamePaused = false;">Open Chest</button>
+                <button>Open chest?</button>
             `;
             
             document.body.appendChild(dialogElement);
@@ -44,8 +46,14 @@ class Chest extends Square {
             // Apply upgrade when dialog is closed
             dialogElement.querySelector('button').onclick = () => {
                 this.applyUpgrade(player);
-                dialogElement.remove();
-                isGamePaused = false;
+                dialogElement.innerHTML = `<P>You found a ${this.loot.type} buff with value ${this.loot.value}!</p>`;
+                setTimeout(() => {
+                    dialogElement.remove();
+                    isGamePaused = false;
+                    this.shouldRemove = true; // Mark chest for removal
+                    // Remove chest from room's chest array
+                    currentRoom.chests = currentRoom.chests.filter(c => !c.shouldRemove);
+                }, 1000);
             };
         }
     }
@@ -67,8 +75,8 @@ class Chest extends Square {
                 player.health += this.loot.value;
                 break;
             case 'speed':
-                player.vx *= this.loot.value;
-                player.vy *= this.loot.value;
+                player.speed *= this.loot.value;
+                player.speed *= this.loot.value;
                 break;
             case 'size':
                 player.width *= this.loot.value;
