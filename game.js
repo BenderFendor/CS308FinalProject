@@ -1,414 +1,566 @@
-// First get DOM elements
-let canvas = document.getElementById('gameCanvas');
-let ctx = canvas.getContext('2d');
-let bgMusic = document.getElementById('bgMusic');
-let bounceSound = document.getElementById('bounce');
-let scoreSound = document.getElementById('scoresfx');
-let gameoverSound = document.getElementById('gameoversfx');
-
-// Game state variables
-let frameCount = 0;
-let lastTime = Date.now();
-let fpsUpdateInterval = 1000; // Update FPS display every second
-let lastFpsUpdate = lastTime;
-let currentFps = 0;
-let score = 0;
-let isGameOver = false;
-let isGamePaused = false; // Add pause state
-
-// Initialize game systems
-let particleSystem = new ParticleSystem();
-let camera = new Camera(); // Move this before it's used
-let roomManager = new RoomManager();
-
-// Initialize game objects
-let player = new Square(100, 100, 50, 50, 'path/to/player-image.png');
-player.isPlayer = true;
-
-// Initialize current room
-let currentRoom = roomManager.generateRoom('test');
-
-// Initialize arrays
-let enemies = [new Enemy(400, 300, 40, 40)];
-let chests = [new Chest(600, 400)];
-let walls = [];
-let projectiles = []; // Array to hold projectiles
-
-// Add levels array
-let levels = ['earth', 'solar', 'blackhole'];
-let currentLevelIndex = 0;
-
-// Update the walls after canvas is available
-function updateWalls() { // I think that this will draw over te enemies.
-    walls = [
-        new Square(0, 0, canvas.width, 20),
-        new Square(0, canvas.height - 20, canvas.width, 20),
-        new Square(0, 0, 20, canvas.height),
-        new Square(canvas.width - 20, 0, 20, canvas.height)
-    ];
-}
-
-// Call updateWalls after resize
-function resizeCanvas() {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-    updateWalls();
-}
-
-// Add sound control
-function initializeSounds() {
-    const sounds = [bgMusic, bounceSound, scoreSound, gameoverSound];
-    sounds.forEach(sound => {
-        sound.muted = true; // Start muted
-    });
-}
-
-// Add sound toggle function
-function toggleSound() {
-    const sounds = [bgMusic, bounceSound, scoreSound, gameoverSound];
-    const newMuteState = !bgMusic.muted;
-    sounds.forEach(sound => {
-        sound.muted = newMuteState;
-    });
-}
-
-// Initialize
-window.addEventListener('resize', resizeCanvas);
-window.addEventListener('keydown', (e) => {
-    if (e.key === 'f') toggleFullscreen();
-    if (e.key === 'm') toggleSound();
-});
-resizeCanvas();
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
 
 // Game state
-player.x = currentRoom.width / 2;
-player.y = currentRoom.height / 2;
+const gameState = {
+    wave: 1,
+    currentPhase: 'earth', // 'earth', 'solar', 'blackhole'
+    difficulty: 1,
+    enemies: [],
+    projectiles: [],
+    score: 0,
+    highScore: localStorage.getItem('highScore') || 0,
+    isGameOver: false,
+    isPaused: false,
+    player: null,
+    bossActive: false,
+    chest: null,
+    phaseLoopCount: 0  // Track how many times we've looped through all phases
+};
 
-// Update initialize function
-function initialize() {
-    score = 0;
-    isGameOver = false;
-    document.getElementById('score').innerText = 'Score: 0';
-    document.getElementById('game-over-overlay').style.visibility = 'hidden';
-    
-    // Reset player position
-    player.vx = 0;
-    player.vy = 0;
-    
-    // Initialize sounds
-    initializeSounds();
-    
-    // Load the first level
-    loadLevel(levels[currentLevelIndex]);
-    
-    // Play music only after user interaction
-    document.addEventListener('click', () => {
-        if (bgMusic.muted) {
-            toggleSound();
+// Wave configuration
+const waveConfig = {
+    earth: {
+        baseHealth: 2,
+        baseSpeed: 1,
+        color: '#4a8505',
+        bossHealth: 5 // Updated boss health for earth
+    },
+    solar: {
+        baseHealth: 3,
+        baseSpeed: 1.2,
+        color: '#ffa726',
+        bossHealth: 10 // Updated boss health for solar
+    },
+    blackhole: {
+        baseHealth: 5,
+        baseSpeed: 1.5,
+        color: '#4a148c',
+        bossHealth: 15 // Updated boss health for blackhole
+    }
+};
+
+// Add the Chest class
+class Chest {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.width = 30;
+        this.height = 30;
+        this.opened = false;
+        
+        // Define all possible upgrades
+        this.upgrades = [
+            // Stat Modifications
+            {
+            type: 'stat',
+            name: 'Health Boost',
+            description: 'Health Increase',
+            effect: () => ({
+                type: 'stat',
+                category: 'health',
+                modifier: (Math.random() * 0.4 + 1.1) // 1.1 to 1.5 (+10% to +50%)
+            })
+            },
+            {
+            type: 'stat',
+            name: 'Speed Boost',
+            description: 'Speed Increase',
+            effect: () => ({
+                type: 'stat',
+                category: 'speed',
+                modifier: (Math.random() * 0.4 + 1.1) // 1.1 to 1.5 (+10% to +50%)
+            })
+            },
+            {
+            type: 'stat',
+            name: 'Power Boost',
+            description: 'Damage Increase',
+            effect: () => ({
+                type: 'stat',
+                category: 'damage',
+                modifier: (Math.random() * 0.4 + 1.1) // 1.1 to 1.5 (+10% to +50%)
+            })
+            },
+            // Special Abilities
+            {
+                type: 'ability',
+                name: 'Temporary God Mode',
+                description: '5 Second Invincibility',
+                effect: () => ({
+                    type: 'ability',
+                    name: 'temporaryInvulnerability',
+                    duration: 5000 // 5 seconds
+                })
+            },
+            {
+                type: 'ability',
+                name: 'Projectile Shield',
+                description: '8 Second Reflection Field',
+                effect: () => ({
+                    type: 'ability',
+                    name: 'projectileReflection',
+                    duration: 8000 // 8 seconds
+                })
+            },
+            {
+                type: 'ability',
+                name: 'Mass Stun',
+                description: '3 Second Enemy Freeze',
+                effect: () => ({
+                    type: 'ability',
+                    name: 'enemyStunning',
+                    duration: 3000 // 3 seconds
+                })
+            }
+        ];
+    }
+
+    draw(ctx) {
+        ctx.fillStyle = this.opened ? 'gray' : 'gold';
+        ctx.fillRect(this.x, this.y, this.width, this.height);
+    }
+
+    update() {
+        // Additional logic if needed
+    }
+
+    collidesWith(entity) {
+        // Collision detection with the player
+        return !(
+            this.x + this.width < entity.x ||
+            this.x > entity.x + entity.width ||
+            this.y + this.height < entity.y ||
+            this.y > entity.y + entity.height
+        );
+    }
+
+    open() {
+        if (!this.opened) {
+            this.opened = true;
+            const randomUpgrade = this.upgrades[Math.floor(Math.random() * this.upgrades.length)];
+            const upgrade = randomUpgrade.effect();
+            
+            // Pause game and show upgrade
+            gameState.isPaused = true;
+            displayUpgrade(upgrade);
+            
+            // Apply upgrade after a delay
+            setTimeout(() => {
+                gameState.player.applyUpgrade(upgrade);
+                gameState.chest = null;
+                gameState.isPaused = false;
+            }, 1000);
         }
-        bgMusic.play();
-    }, { once: true });
-
-    requestAnimationFrame(gameLoop);
-}
-
-// Add function to load levels
-function loadLevel(levelName) {
-    console.log(`Loading level: ${levelName}`);
-    try {
-        currentRoom = roomManager.generateRoom(levelName);
-        // Center player in room
-        player.x = currentRoom.boundary.x + currentRoom.boundary.width/2 - player.width/2;
-        player.y = currentRoom.boundary.y + currentRoom.boundary.height/2 - player.height/2;
-        camera.target = player;
-    } catch (error) {
-        console.error(`Error loading level ${levelName}:`, error);
-        // Fallback to test level
-        currentRoom = roomManager.generateRoom('test');
-        player.x = currentRoom.boundary.x + currentRoom.boundary.width/2 - player.width/2;
-        player.y = currentRoom.boundary.y + currentRoom.boundary.height/2 - player.height/2;
-        camera.target = player;
     }
 }
 
-function gameOver() {
-    isGameOver = true;
-    bgMusic.pause();
-    gameoverSound.play();
-    document.getElementById('game-over-overlay').style.visibility = 'visible';
-    document.getElementById('final-score-value').innerText = score;
-    currentLevelIndex = 0; // Reset levels
+// Initialize player
+gameState.player = new Player(
+    canvas.width / 2,
+    canvas.height / 2,
+    30,
+    30,
+    'player.png'
+);
+gameState.player.isPlayer = true;
+gameState.player.health = 20;
+gameState.player.maxHealth = 20;
+
+function startWave() {
+    const config = waveConfig[gameState.currentPhase];
+    const waveInPhase = (gameState.wave - 1) % 4; // 3 normal waves + 1 boss wave
+
+    if (waveInPhase < 3) {
+        // Spawn normal enemies
+        const enemyCount = Math.min(3 + Math.floor(gameState.wave / 2), 8);
+        for(let i = 0; i < enemyCount; i++) {
+            spawnEnemy(config);
+        }
+    } else {
+        // Spawn boss
+        spawnBoss(config);
+    }
+
+    // Increase difficulty
+    gameState.difficulty = 1 + (gameState.wave * 0.1);
+
+    // 50% chance to spawn a chest each new wave
+    if (Math.random() < 0.5) {
+        spawnChest();
+    }
 }
 
-// Add before gameLoop
-function drawHUD() {
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform for HUD
-
-    // Draw health
-    ctx.fillStyle = 'white';
-    ctx.font = '20px monospace';
-    ctx.fillText(`HP: ${player.health}`, 10, 50);
+function spawnEnemy(config) {
+    const x = Math.random() < 0.5 ? 0 : canvas.width;
+    const y = Math.random() * canvas.height;
+    const enemy = new Enemy(x, y, 30, 30, gameState.currentPhase);
     
-    // Draw enemy count
-    const activeEnemies = currentRoom.enemies.filter(enemy => enemy.active).length;
-    ctx.fillText(`Enemies: ${activeEnemies}`, 10, 80);
-      
-    ctx.restore();
+    // Apply difficulty scaling
+    enemy.health = config.baseHealth * gameState.difficulty;
+    enemy.maxHealth = enemy.health;
+    enemy.speed *= gameState.difficulty;
+    
+    gameState.enemies.push(enemy);
 }
 
-// Update gameLoop function
-function gameLoop(currentTime) {
-    if (isGameOver) return;
+function spawnBoss(config) {
+    gameState.bossActive = true;
+    const boss = new Enemy(
+        canvas.width/2,
+        canvas.height/2,
+        60,
+        60,
+        gameState.currentPhase
+    );
+    boss.health = config.bossHealth * gameState.difficulty;
+    boss.maxHealth = boss.health;
+    boss.isBoss = true;
+    gameState.enemies.push(boss);
+}
 
-    // Calculate accurate FPS
-    const now = Date.now();
-    frameCount++;
+function spawnChest() {
+    let chestX, chestY;
+    do {
+        chestX = Math.random() * (canvas.width - 30);
+        chestY = Math.random() * (canvas.height - 30);
+        // Ensure chest is not near the player
+    } while (Math.hypot(chestX - gameState.player.x, chestY - gameState.player.y) < 100);
 
-    // Update FPS counter once per second
-    if (now - lastFpsUpdate >= fpsUpdateInterval) {
-        currentFps = Math.round((frameCount * 1000) / (now - lastFpsUpdate));
-        fpsCounter.textContent = `FPS: ${currentFps}`;
-        frameCount = 0;
-        lastFpsUpdate = now;
+    gameState.chest = new Chest(chestX, chestY);
+}
+
+function updateGameState() {
+    if(gameState.isGameOver || gameState.isPaused) return;
+
+    // Update player
+    gameState.player.update(canvas);
+    
+    // Update enemies
+    gameState.enemies = gameState.enemies.filter(enemy => {
+        enemy.update(gameState.player);
+        if(!enemy.active) {
+            gameState.score += enemy.isBoss ? 100 : 10;
+            return false;
+        }
+        return true;
+    });
+
+    // Check wave completion
+    checkWaveCompletion();
+
+    // Update projectiles
+    updateProjectiles();
+
+    // Update chest
+    if (gameState.chest) {
+        gameState.chest.update();
+        if (gameState.chest.collidesWith(gameState.player)) {
+            // Pause the game
+            gameState.isPaused = true;
+            // Open the chest which applies the upgrade and displays it
+            gameState.chest.open();
+            // After 1 second, resume the game
+            setTimeout(() => {
+                gameState.isPaused = false;
+            }, 1000);
+        }
     }
 
-    // Calculate delta time for smooth animations
-    const deltaTime = now - lastTime;
-    lastTime = now;
-
-    // Skip updating if the game is paused
-    if (isGamePaused) {
-        requestAnimationFrame(gameLoop);
-        return;
+    // Check player death
+    if(gameState.player.health <= 0) {
+        endGame();
     }
+}
 
-    // Clear the entire canvas before drawing
+function checkWaveCompletion() {
+    if (gameState.enemies.length === 0) {
+        gameState.wave++;
+
+        const waveInPhase = (gameState.wave - 1) % 4;
+
+        if (waveInPhase === 0) {
+            // After boss wave, move to the next phase
+            switch(gameState.currentPhase) {
+                case 'earth':
+                    gameState.currentPhase = 'solar';
+                    break;
+                case 'solar':
+                    gameState.currentPhase = 'blackhole';
+                    break;
+                case 'blackhole':
+                    gameState.currentPhase = 'earth';
+                    gameState.phaseLoopCount++;
+                    // Only heal on second+ loop
+                    if (gameState.phaseLoopCount > 1) {
+                        const halfMaxHealth = Math.floor(gameState.player.maxHealth / 2);
+                        gameState.player.health = Math.min(
+                            gameState.player.maxHealth,
+                            gameState.player.health + halfMaxHealth
+                        );
+                    }
+                    break;
+            }
+        }
+
+        startWave();
+    }
+}
+
+function drawGame() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Save context and apply camera transformation
-    ctx.save();
+    // Draw background based on current phase
+    drawBackground();
     
-    // Center the camera on player while keeping room centered
-    const roomCenterX = currentRoom.boundary.x + currentRoom.boundary.width/2;
-    const roomCenterY = currentRoom.boundary.y + currentRoom.boundary.height/2;
-    const cameraX = player.x - canvas.width/2;
-    const cameraY = player.y - canvas.height/2;
+    // Draw game elements
+    gameState.player.draw(ctx);
+    gameState.enemies.forEach(enemy => enemy.draw(ctx));
+    gameState.projectiles.forEach(projectile => projectile.draw(ctx));
     
-    // Apply camera transform with room centering
-    ctx.translate(
-        -cameraX + (canvas.width - currentRoom.boundary.width)/2 - currentRoom.boundary.x,
-        -cameraY + (canvas.height - currentRoom.boundary.height)/2 - currentRoom.boundary.y
-    );
+    // Draw chest
+    if (gameState.chest) {
+        gameState.chest.draw(ctx);
+    }
 
-    // Update all entities first
-    player.update(canvas);
-    currentRoom.enemies.forEach(enemy => {
-        if (enemy.active) {
-            enemy.update(player, currentRoom.walls);
-        }
-    });
-
-    // Handle all collisions
-    handleCollisions();
-
-    // Draw everything
-    currentRoom.draw(ctx);
-    player.draw(ctx);
-
-    // Update and draw walls
-    currentRoom.walls.forEach(wall => {
-        wall.draw(ctx);
-        player.collidesWith(wall);
-    });
-
-    // Update and draw enemies
-    currentRoom.enemies.forEach(enemy => {
-        if (!enemy.active) return;
-        enemy.update(player, currentRoom.walls); // Pass walls to enemy update
-        enemy.draw(ctx);
-    });
-
-    // Check collisions between enemies and walls
-    currentRoom.enemies.forEach(enemy => {
-        currentRoom.walls.forEach(wall => {
-            enemy.collidesWith(wall);
-        });
-    });
-
-    // Draw and update chests
-    currentRoom.chests.forEach(chest => {
-        chest.draw(ctx);
-        if (!chest.isOpen && player.collidesWith(chest)) {
-            chest.open(player);
-            scoreSound.play();
-            score += 100;
-            camera.shake(3);
-        }
-    });
-
-    // Update and draw projectiles with collision detection
-    projectiles.forEach(projectile => {
-        if (!projectile.active) return;
-        
-        projectile.update();
-        projectile.draw(ctx);
-
-        // Check for collision with player
-        if (projectile.collidesWith(player)) {
-            player.takeDamage(projectile.damage);
-            projectile.active = false;
-            
-            // Visual feedback
-            particleSystem.addHitParticle(
-                player.x + player.width/2,
-                player.y + player.height/2,
-                "255,0,0"
-            );
-            camera.shake(3);
-        }
-
-        // Check for collision with walls
-        currentRoom.walls.forEach(wall => {
-            if (projectile.collidesWith(wall)) {
-                projectile.active = false;
-                particleSystem.addHitParticle(projectile.x, projectile.y, "128,128,128");
-            }
-        });
-    });
-
-    // Clean up inactive projectiles
-    projectiles = projectiles.filter(p => p.active);
-
-    // Update particles and effects
-    particleSystem.update();
-    particleSystem.draw(ctx);
-    camera.update();
-
-    // Check wall collisions
-    currentRoom.walls.forEach(wall => {
-        player.collidesWith(wall);
-        currentRoom.enemies.forEach(enemy => {
-            enemy.collidesWith(wall);
-        });
-    });
-
-    // Draw room boundary
-    currentRoom.boundary.draw(ctx);
-
-    ctx.restore();
+    // Draw HUD
     drawHUD();
+}
 
-    // After updating and drawing all entities
-    checkLevelCompletion();
+function drawBackground() {
+    const backgrounds = {
+        earth: '#1a472a',
+        solar: '#2a1a47',
+        blackhole: '#0a0a0a'
+    };
+    ctx.fillStyle = backgrounds[gameState.currentPhase];
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
 
+function drawHUD() {
+    ctx.fillStyle = 'white';
+    ctx.font = '20px Alagard';
+    ctx.fillText(`Wave: ${gameState.wave}`, 10, 30);
+    ctx.fillText(`Score: ${gameState.score}`, 10, 60);
+    ctx.fillText(`High Score: ${gameState.highScore}`, 10, 90);
+    
+    // Draw phase indicator
+    ctx.fillText(`Phase: ${gameState.currentPhase.toUpperCase()}`, 10, 120);
+    
+    // Display player's HP
+    ctx.fillText(`Player HP: ${gameState.player.health} / ${gameState.player.maxHealth}`, 10, 150);
+
+    // Display enemy count
+    ctx.fillText(`Enemies Remaining: ${gameState.enemies.length}`, 10, 180);
+
+    // Draw FPS counter
+    ctx.fillText(`FPS: ${Math.round(fps)}`, canvas.width - 100, 30);
+}
+
+let lastTime = 0;
+let fps = 60;
+
+function gameLoop(timestamp) {
+    // Calculate FPS
+    const deltaTime = timestamp - lastTime;
+    lastTime = timestamp;
+    fps = 1000 / deltaTime;
+
+    updateGameState();
+    drawGame();
     requestAnimationFrame(gameLoop);
 }
 
-// Add function to check for level completion
-function checkLevelCompletion() {
-    if (currentRoom.enemies.length === 0 && !currentRoom.cleared) {
-        currentRoom.cleared = true;
-        currentLevelIndex++;
-        if (currentLevelIndex < levels.length) {
-            loadLevel(levels[currentLevelIndex]);
-        } else {
-            // Game completed, handle accordingly
-            console.log('All levels completed!');
-            // ...handle end of game...
-        }
+function startGame() {
+    // Reset game state
+    gameState.wave = 1;
+    gameState.currentPhase = 'earth';
+    gameState.difficulty = 1;
+    gameState.score = 0;
+    gameState.enemies = [];
+    gameState.projectiles = [];
+    gameState.isGameOver = false;
+    gameState.player.health = gameState.player.maxHealth;
+    gameState.phaseLoopCount = 0;
+    
+    // Hide game over screen
+    document.getElementById('game-over').style.display = 'none';
+    
+    startWave();
+    gameLoop();
+}
+
+function endGame() {
+    gameState.isGameOver = true;
+    if(gameState.score > gameState.highScore) {
+        gameState.highScore = gameState.score;
+        localStorage.setItem('highScore', gameState.highScore);
     }
+    document.getElementById('game-over').style.display = 'block';
 }
 
-// Modify room initialization
-function initializeRoom() {
-    const roomSize = 1000; // or whatever size you want
-    currentRoom = {
-        boundary: new RoomBoundary(-roomSize/2, -roomSize/2, roomSize, roomSize),
-        enemies: [],
-        chests: [],
-        // ...other room properties...
-    };
-}
-
-function handleCollisions() {
-    // Check if player is within bounds
-    const playerCenter = {
-        x: player.x + player.width/2,
-        y: player.y + player.height/2
-    };
-
-    if (!currentRoom.boundary.containsPoint(playerCenter.x, playerCenter.y)) {
-        console.warn(`Player out of bounds: ${playerCenter.x}, ${playerCenter.y}`);
-        // Keep player in bounds
-        player.x = Math.max(currentRoom.boundary.x, Math.min(currentRoom.boundary.x + currentRoom.boundary.width - player.width, player.x));
-        player.y = Math.max(currentRoom.boundary.y, Math.min(currentRoom.boundary.y + currentRoom.boundary.height - player.height, player.y));
-        player.vx *= -0.5; // Bounce effect
-        player.vy *= -0.5;
-    }
-
-    // Check enemies
-    currentRoom.enemies.forEach(enemy => {
-        if (!currentRoom.boundary.containsPoint(enemy.x + enemy.width/2, enemy.y + enemy.height/2)) {
-            console.warn(`Enemy out of bounds: ${enemy.x}, ${enemy.y}`);
-            // Keep enemy in bounds
-            enemy.x = Math.max(currentRoom.boundary.x, Math.min(currentRoom.boundary.x + currentRoom.boundary.width - enemy.width, enemy.x));
-            enemy.y = Math.max(currentRoom.boundary.y, Math.min(currentRoom.boundary.y + currentRoom.boundary.height - enemy.height, enemy.y));
-            enemy.vx *= -0.5;
-            enemy.vy *= -0.5;
-        }
-    });
-
-    // ...rest of collision handling...
-}
-
-function checkCollisions() {
-    // Chest collision
-    currentRoom.chests.forEach(chest => {
-        if (!chest.isOpen && player.collidesWith(chest)) {
-            chest.open(player);
-            scoreSound.play();
-            score += 100;
-            camera.shake(3);
-        }
-    });
-}
-
-// Initialize the game
-initialize();
-
-// Handle mouse events for player
-canvas.addEventListener('mousedown', (e) => {
-    if (e.button === 0) { // Left click
+// Event Listeners
+canvas.addEventListener('mousemove', (e) => {
+    if(!gameState.isGameOver && !gameState.isPaused) {
         const rect = canvas.getBoundingClientRect();
-        const mouseX = (e.clientX - rect.left) / (rect.width / canvas.width) + camera.x - canvas.width/2;
-        const mouseY = (e.clientY - rect.top) / (rect.height / canvas.height) + camera.y - canvas.height/2;
-        player.startDrag(mouseX, mouseY);
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+        
+        if(gameState.player.isDragging) {
+            gameState.player.drag(mouseX, mouseY);
+        }
     }
 });
 
-canvas.addEventListener('mousemove', (e) => {
-    if (player.isDragging) {
+canvas.addEventListener('mousedown', (e) => {
+    if(!gameState.isGameOver && !gameState.isPaused) {
         const rect = canvas.getBoundingClientRect();
-        const mouseX = (e.clientX - rect.left) / (rect.width / canvas.width) + camera.x - canvas.width/2;
-        const mouseY = (e.clientY - rect.top) / (rect.height / canvas.height) + camera.y - canvas.height/2;
-        player.drag(mouseX, mouseY);
+        gameState.player.startDrag(
+            e.clientX - rect.left,
+            e.clientY - rect.top
+        );
     }
 });
 
 canvas.addEventListener('mouseup', (e) => {
-    if (e.button === 0) { // Left click
+    if(!gameState.isGameOver && !gameState.isPaused) {
         const rect = canvas.getBoundingClientRect();
-        const mouseX = (e.clientX - rect.left) / (rect.width / canvas.width) + camera.x - canvas.width/2;
-        const mouseY = (e.clientY - rect.top) / (rect.height / canvas.height) + camera.y - canvas.height/2;
-        player.endDrag(mouseX, mouseY);
+        gameState.player.endDrag(
+            e.clientX - rect.left,
+            e.clientY - rect.top
+        );
     }
 });
 
-// Add debug toggle
-window.addEventListener('keydown', (e) => {
-    if (e.key === 'd') {
-        currentRoom.boundary.debug = !currentRoom.boundary.debug;
-        console.log('Debug visualization:', currentRoom.boundary.debug ? 'enabled' : 'disabled');
+document.addEventListener('keydown', (e) => {
+    if(e.key === 'Escape') {
+        gameState.isPaused = !gameState.isPaused;
     }
 });
+
+// Modify projectile update to check collision with player
+function updateProjectiles() {
+    gameState.projectiles = gameState.projectiles.filter(projectile => {
+        projectile.update();
+
+        // Check for collisions with enemies for reflected projectiles
+        if (projectile.type === 'player') {
+            for (let enemy of gameState.enemies) {
+                if (projectile.collidesWith(enemy)) {
+                    enemy.takeDamage(projectile.damage);
+                    projectile.active = false;
+                    return false;
+                }
+            }
+        }
+
+        if (projectile.active && projectile.collidesWith(gameState.player)) {
+            if (gameState.player.reflectProjectiles) {
+                // Reflect the projectile back
+                projectile.vx = -projectile.vx;
+                projectile.vy = -projectile.vy;
+                projectile.type = 'player'; // Change to player projectile
+                projectile.damage *= 2; // Double the damage for reflected projectiles
+                return true;
+            } else {
+                gameState.player.takeDamage(projectile.damage);
+                projectile.active = false;
+                return false;
+            }
+        }
+        return projectile.active;
+    });
+}
+
+// Function to display the upgrade message
+function displayUpgrade(upgrade) {
+    const upgradeMessage = document.getElementById('upgrade-message');
+    const upgradeText = document.getElementById('upgrade-text');
+    let displayText = '';
+    
+    if (upgrade.type === 'stat') {
+        const percentage = ((upgrade.modifier - 1) * 100).toFixed(0);
+        const sign = percentage >= 0 ? '+' : '';
+        
+        // Map stat categories to friendly names
+        const statNames = {
+            health: 'Health',
+            speed: 'Movement Speed',
+            damage: 'Attack Power'
+        };
+        
+        const statName = statNames[upgrade.category] || upgrade.category;
+        displayText = `${statName} ${sign}${percentage}%`;
+    } else if (upgrade.type === 'ability') {
+        // Map ability names to friendly names and descriptions
+        const abilityInfo = {
+            temporaryInvulnerability: {
+                name: 'Temporary God Mode',
+                description: '5 seconds of invincibility'
+            },
+            projectileReflection: {
+                name: 'Projectile Shield',
+                description: '8 seconds of projectile reflection'
+            },
+            enemyStunning: {
+                name: 'Mass Enemy Stun',
+                description: '3 second freeze on all enemies'
+            }
+        };
+        
+        const ability = abilityInfo[upgrade.name] || { 
+            name: upgrade.name, 
+            description: `Duration: ${upgrade.duration/1000}s` 
+        };
+        
+        displayText = `${ability.name}\n${ability.description}`;
+    }
+    
+    upgradeText.textContent = displayText;
+    upgradeMessage.style.display = 'block';
+    
+    setTimeout(() => {
+        upgradeMessage.style.display = 'none';
+    }, 1000);
+}
+
+// Apply upgrades to the player
+Player.prototype.applyUpgrade = function(upgrade) {
+    if (upgrade.type === 'stat') {
+        switch(upgrade.category) {
+            case 'health':
+                this.maxHealth = Math.floor(this.maxHealth * upgrade.modifier);
+                this.health = this.maxHealth;
+                break;
+            case 'speed':
+                this.speed *= upgrade.modifier;
+                break;
+            case 'damage':
+                this.damage *= upgrade.modifier;
+                break;
+        }
+    } else if (upgrade.type === 'ability') {
+        const duration = upgrade.duration || 5000;
+        switch(upgrade.name) {
+            case 'temporaryInvulnerability':
+                this.invulnerable = true;
+                setTimeout(() => { this.invulnerable = false; }, duration);
+                break;
+            case 'projectileReflection':
+                this.reflectProjectiles = true;
+                setTimeout(() => { this.reflectProjectiles = false; }, duration);
+                break;
+            case 'enemyStunning':
+                gameState.enemies.forEach(enemy => enemy.stunned = true);
+                setTimeout(() => {
+                    gameState.enemies.forEach(enemy => enemy.stunned = false);
+                }, duration);
+                break;
+        }
+    }
+};
+
+// Start the game
+startGame();

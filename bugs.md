@@ -1,7 +1,9 @@
 ### Bugs ###
 
-You can telpeport out of the walls probably has something to do with collisoin and trying to attack an enemy when your colldoing with a wall at the same time it only does one has it is a single core game
+The enemy freeze just doesn't work
 
-Wall collsion still doesn't work
+All enemies are one shot for some reason.
+    Probably has to do with hitting them mutiples times a second add debugging statements to see that.
 
-Can we fix the collisions here because the enemeies collide inside of the player when the player collidesd with the wall the whole player just disapears
+Speed is handled really oddly like the game speed up randomly I think it because when you like tab out the game clock still counts but the game it self doesn't move making it just speed the game up?
+

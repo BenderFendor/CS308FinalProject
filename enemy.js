@@ -1,200 +1,348 @@
-class Enemy extends Square {
-    // Represents an enemy in the game
-    constructor(x, y, width, height, type = 'basic') {
-        super(x, y, width, height);
+class Enemy {
+    constructor(x, y, width, height, type = 'earth') {
+        // Enemy position and size
+        this.x = x;
+        this.y = y;
+        this.width = width;
+        this.height = height;
+
+        // Velocity
+        this.vx = 0;
+        this.vy = 0;
+
+        // Enemy attributes based on type
+        const enemyTypes = {
+            earth: { 
+                health: 2,
+                speed: 1,
+                color: '#4a8505',
+                attacks: ['groundSlam', 'rockThrow']
+            },
+            solar: { 
+                health: 3,
+                speed: 1.2,
+                color: '#ffa726',
+                attacks: ['solarFlare', 'heatWave']
+            },
+            blackhole: { 
+                health: 5,
+                speed: 1.5,
+                color: '#4a148c',
+                attacks: ['gravityPull', 'voidBlast']
+            }
+        };
+
+        const typeData = enemyTypes[type] || enemyTypes.earth;
+        Object.assign(this, typeData);
         this.type = type;
-        // Adjust attributes based on enemy type
-        if (this.type === 'earth') {
-            this.health = 2;
-            this.speed = 1;
-            this.color = 'green';
-        } else if (this.type === 'solar') {
-            this.health = 3;
-            this.speed = 1.2;
-            this.color = 'orange';
-        } else if (this.type === 'blackhole') {
-            this.health = 5;
-            this.speed = 1.5;
-            this.color = 'purple';
-        } else {
-            this.health = 2;
-            this.speed = 1;
-            this.color = 'red';
-        }
         this.maxHealth = this.health;
         this.active = true;
-        this.mass = 1; // Lower mass than player for bouncing
-        this.attackCooldowns = {
-            basic: 0,
-            slow: 0,
-            aoe: 0
-        };
-        this.cooldownTimes = {
-            basic: 120,    // 2 seconds between basic shots
-            slow: 240,     // 4 seconds between slow shots
-            aoe: 360      // 6 seconds between AOE attacks
-        };
-        this.lastCollisionTime = 0; // Prevent multiple collisions
+        this.mass = 1; // For collision physics
+        this.isCharging = false;
+        this.isBoss = false;
+        this.attackPatterns = this.initializeAttackPatterns();
+        this.lastCollisionTime = 0;
+        this.isFlashing = false;
+        this.flashTimer = 0;
+        this.stunned = false;
+        this.stunDuration = 0;
+        this.lastDamageTime = 0; // Add cooldown for taking damage
+        this.damageImmunity = 500; // 500ms between damage taken
+
+        this.lastDamageTime = 0;
+        this.damageCooldown = 1000; // 1000ms = 1 second between hits
+        this.isInvulnerable = false; // Add invulnerability state
+
+        // Initialize attack cooldowns with random values
+        for (const key in this.attackPatterns) {
+            this.attackPatterns[key].lastUsed = Math.floor(Math.random() * this.attackPatterns[key].cooldown);
+        }
     }
 
-    update(player, walls) {
+    initializeAttackPatterns() {
+        // Increase cooldowns by factor of 5 to slow down attack rate to 20%
+        return {
+            basic: { probability: 0.7, cooldown: 240 * 5, lastUsed: 0 },
+            heavy: { probability: 0.2, cooldown: 480 * 5, lastUsed: 0 },
+            aoe:   { probability: 0.1, cooldown: 720 * 5, lastUsed: 0 }
+        };
+    }
+
+    update(player) {
         if (!this.active) return;
 
-        // Update position and handle movement
-        if (!this.isCharging) {
-            const dx = player.x - this.x;
-            const dy = player.y - this.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            
-            if (distance > 0) {
-                this.vx = (dx / distance) * this.speed;
-                this.vy = (dy / distance) * this.speed;
-                this.x += this.vx;
-                this.y += this.vy;
+        if (this.stunned) {
+            // Remain idle while stunned
+            this.stunDuration--;
+            if (this.stunDuration <= 0) {
+                this.stunned = false;
             }
+            return;
         }
 
-        // Handle attack cooldowns
-        Object.keys(this.attackCooldowns).forEach(key => {
-            if (this.attackCooldowns[key] > 0) {
-                this.attackCooldowns[key]--;
+        if (this.isFlashing) {
+            this.flashTimer--;
+            if (this.flashTimer <= 0) {
+                this.isFlashing = false;
+                this.explode();
             }
-        });
+        } else {
+            if (!this.isCharging) {
+                // Move towards the player
+                const dx = player.x - this.x;
+                const dy = player.y - this.y;
+                const distance = Math.hypot(dx, dy);
 
-        // Check for player collision and damage
-        if (this.collidesWith(player)) {
-            const currentTime = Date.now();
-            if (currentTime - this.lastCollisionTime > 100) { // Prevent multiple hits
-                const impactSpeed = Math.sqrt(
-                    Math.pow(player.vx - this.vx, 2) + 
-                    Math.pow(player.vy - this.vy, 2)
-                );
-                
-                if (impactSpeed > 5) {
-                    this.takeDamage(1);
-                    particleSystem.addHitParticle(this.x + this.width/2, this.y + this.height/2);
+                if (distance > 0) {
+                    this.vx = (dx / distance) * this.speed;
+                    this.vy = (dy / distance) * this.speed;
+                    this.x += this.vx;
+                    this.y += this.vy;
                 }
-                this.lastCollisionTime = currentTime;
+            }
+
+            // Handle attack cooldowns with randomness
+            for (const key in this.attackPatterns) {
+                const pattern = this.attackPatterns[key];
+                if (pattern.lastUsed > 0) {
+                    pattern.lastUsed--;
+                } else {
+                    if (Math.random() < pattern.probability) {
+                        this.executeAttack(key, player);
+                        // Add randomness to cooldown
+                        pattern.lastUsed = pattern.cooldown + Math.floor(Math.random() * 100);
+                    }
+                }
+            }
+
+            // Check collision with player
+            if (this.collidesWith(player)) {
+                this.handleCollisionWithPlayer(player);
             }
         }
-
-        // Perform attacks
-        this.performAttack(player);
     }
 
-    performAttack(player) {
-        let rand = Math.random();
-        if (rand < 0.7 && this.attackCooldowns.basic === 0) {
+    executeAttack(type, player) {
+        const attacks = {
+            earth: {
+                basic: () => this.groundSlam(player),
+                heavy: () => this.rockThrow(player),
+                aoe:   () => this.areaQuake()
+            },
+            solar: {
+                basic: () => this.solarFlare(player),
+                heavy: () => this.heatWave(player),
+                aoe:   () => this.solarEruption()
+            },
+            blackhole: {
+                basic: () => this.gravityPull(player),
+                heavy: () => this.voidBlast(player),
+                aoe:   () => this.singularity()
+            }
+        };
+
+        if (attacks[this.type] && attacks[this.type][type]) {
+            attacks[this.type][type]();
+        } else {
             this.basicShot(player);
-            this.attackCooldowns.basic = this.cooldownTimes.basic;
-        } else if (rand < 0.9 && this.attackCooldowns.slow === 0) {
-            this.slowShot(player);
-            this.attackCooldowns.slow = this.cooldownTimes.slow;
-        } else if (this.attackCooldowns.aoe === 0) {
-            this.aoeAttack();
-            this.attackCooldowns.aoe = this.cooldownTimes.aoe;
         }
+    }
+
+    // Define all attack methods (groundSlam, rockThrow, etc.)
+
+    groundSlam(player) {
+        // Creates a shockwave attack
+        const shockwave = new AOEAttack(this.x, this.y, 50, 2);
+        shockwave.type = 'earth';
+        shockwave.duration = 45;
+        gameState.projectiles.push(shockwave);
+    }
+
+    rockThrow(player) {
+        // Throws a rock projectile towards the player
+        const angle = Math.atan2(player.y - this.y, player.x - this.x);
+        const speed = 5 * 0.25; // Reduce speed to 25%
+        const rock = new Projectile(
+            this.x, 
+            this.y,
+            Math.cos(angle) * speed,
+            Math.sin(angle) * speed,
+            3,
+            'rock'
+        );
+        rock.size = 15;
+        gameState.projectiles.push(rock);
+    }
+
+    solarFlare(player) {
+        // Shoots projectiles in all directions
+        for (let i = 0; i < 8; i++) {
+            const angle = (Math.PI * 2 * i) / 8;
+            const speed = 6 * 0.25; // Reduce speed to 25%
+            const flare = new Projectile(
+                this.x, 
+                this.y,
+                Math.cos(angle) * speed,
+                Math.sin(angle) * speed,
+                1,
+                'solar'
+            );
+            gameState.projectiles.push(flare);
+        }
+    }
+
+    heatWave(player) {
+        // Shoots a wave attack towards the player
+        const dx = player.x - this.x;
+        const dy = player.y - this.y;
+        const wave = new WaveAttack(
+            this.x, 
+            this.y,
+            dx, 
+            dy,
+            100,
+            2
+        );
+        gameState.projectiles.push(wave);
+    }
+
+    gravityPull(player) {
+        // Creates a gravity field that pulls the player
+        const pull = new GravityField(this.x, this.y, 150);
+        gameState.projectiles.push(pull);
+    }
+
+    voidBlast(player) {
+        // Shoots a powerful projectile towards the player
+        const angle = Math.atan2(player.y - this.y, player.x - this.x);
+        const speed = 8 * 0.25; // Reduce speed to 25%
+        const blast = new Projectile(
+            this.x, 
+            this.y,
+            Math.cos(angle) * speed,
+            Math.sin(angle) * speed,
+            5,
+            'void'
+        );
+        blast.size = 20;
+        gameState.projectiles.push(blast);
+    }
+
+    areaQuake() {
+        // Creates an area-of-effect attack around the enemy
+        const quake = new AOEAttack(this.x, this.y, 100, 3);
+        quake.type = 'earth';
+        quake.duration = 60;
+        gameState.projectiles.push(quake);
+    }
+
+    solarEruption() {
+        // Creates a large area-of-effect attack after a delay
+        this.isCharging = true;
+        setTimeout(() => {
+            const eruption = new AOEAttack(this.x, this.y, 150, 4);
+            eruption.type = 'solar';
+            eruption.duration = 60;
+            gameState.projectiles.push(eruption);
+            this.isCharging = false;
+        }, 1000); // 1-second charge time
+    }
+
+    singularity() {
+        // Creates a black hole that sucks in the player and projectiles
+        const singularity = new GravityField(this.x, this.y, 200);
+        singularity.pullForce = 1.0;
+        singularity.duration = 120; // Lasts longer
+        gameState.projectiles.push(singularity);
     }
 
     basicShot(player) {
-        // Basic projectile towards player with reduced speed
         const angle = Math.atan2(player.y - this.y, player.x - this.x);
-        const speed = 8; // Reduced from 15
-        const vx = Math.cos(angle) * speed;
-        const vy = Math.sin(angle) * speed;
-        const projectile = new Projectile(this.x, this.y, vx, vy, 1, 'basic');
-        projectiles.push(projectile);
-    }
-
-    slowShot(player) {
-        // Slow but damaging projectile with reduced speed
-        const angle = Math.atan2(player.y - this.y, player.x - this.x);
-        const speed = 2; // Reduced from 3
-        const vx = Math.cos(angle) * speed;
-        const vy = Math.sin(angle) * speed;
-        const projectile = new Projectile(this.x, this.y, vx, vy, 2, 'slow');
-        projectiles.push(projectile);
-    }
-
-    aoeAttack() {
-        // Charge up for AOE attack
-        this.isCharging = true;
-        setTimeout(() => {
-            this.isCharging = false;
-            // Create an AOE effect
-            const aoe = new AOEAttack(this.x, this.y, 50, 2);
-            projectiles.push(aoe);
-        }, 500); // 500ms charge time
-    }
-
-    handleCollisionWithPlayer(player) {
-        if (this.isResolvingCollision) return;
-        
-        super.resolveCollision(player);
-        
-        // Check collision damage
-        const impactSpeed = Math.sqrt(
-            Math.pow(player.vx - this.vx, 2) + 
-            Math.pow(player.vy - this.vy, 2)
+        const speed = 5 * 0.25; // Reduce speed to 25%
+        const projectile = new Projectile(
+            this.x, 
+            this.y,
+            Math.cos(angle) * speed,
+            Math.sin(angle) * speed,
+            1,
+            this.type
         );
-        
-        if (impactSpeed > 5) {
-            this.takeDamage(1);
+        gameState.projectiles.push(projectile);
+    }
+    handleCollisionWithPlayer(player) {
+        const currentTime = Date.now();
+        // Only process collision if enemy isn't invulnerable
+        if (!this.isInvulnerable) {
+            // Apply damage and make enemy invulnerable
+            this.takeDamage(player.damage);
+            this.isInvulnerable = true;
+            
+            // Reset invulnerability after cooldown
+            setTimeout(() => {
+                this.isInvulnerable = false;
+            }, this.damageCooldown);
+            
+            // Bounce physics
+            this.vx = -this.vx;
+            this.vy = -this.vy;
+            player.vx = -player.vx * 0.8;
+            player.vy = -player.vy * 0.8;
         }
     }
 
-    handleCollisionWithWall(wall) {
-        // Similar collision response as in Square class
-        // ...collision handling code...
+    takeDamage(amount) {
+        // Only apply damage if not invulnerable
+        if (!this.isInvulnerable) {
+            this.health -= amount;
+
+            // Visual feedback
+            this.isFlashing = true;
+            this.flashTimer = 5;
+
+            // Check for death
+            if (this.health <= 0) {
+                this.active = false;
+            }
+        }
     }
 
-    resolveCollision(other) {
-        // Calculate collision response
-        const dx = other.x - this.x;
-        const dy = other.y - this.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
+    explode() {
+        // Perform AoE attack upon exploding
+        const explosion = new AOEAttack(this.x + this.width / 2, this.y + this.height / 2, 50, 2);
+        explosion.type = this.type;
+        explosion.duration = 30;
+        gameState.projectiles.push(explosion);
 
-        if (distance === 0) return;
-
-        // Normalize collision vector
-        const nx = dx / distance;
-        const ny = dy / distance;
-
-        // Calculate relative velocity
-        const dvx = this.vx - (other.vx || 0);
-        const dvy = this.vy - (other.vy || 0);
-
-        // Calculate impulse
-        const impulse = -(2 * (dvx * nx + dvy * ny)) / 
-                        (1/this.mass + (other.mass ? 1/other.mass : 0));
-
-        // Apply impulse
-        this.vx += impulse * nx / this.mass;
-        this.vy += impulse * ny / this.mass;
-
-        if (other.vx !== undefined) {
-            other.vx -= impulse * nx / other.mass;
-            other.vy -= impulse * ny / other.mass;
-        }
+        this.active = false;
+        // Additional logic for enemy death (e.g., particle effects)
     }
 
     draw(ctx) {
-        // Draw the enemy
-        ctx.fillStyle = this.color; // Enemy color
+        if (this.isFlashing) {
+            ctx.fillStyle = 'orange';
+        } else {
+            ctx.fillStyle = this.color;
+        }
         ctx.fillRect(this.x, this.y, this.width, this.height);
 
-        // Draw health bar
+        // Draw centered HP bar
         const barWidth = this.width;
         const barHeight = 5;
         const barY = this.y - 10;
 
+        // Center the health bar
+        const centerX = this.x + (this.width - barWidth) / 2;
+
+        // Background bar
         ctx.fillStyle = 'red';
-        ctx.fillRect(this.x, barY, barWidth, barHeight);
+        ctx.fillRect(centerX, barY, barWidth, barHeight);
 
+        // Health bar
+        const healthRatio = this.health / this.maxHealth;
         ctx.fillStyle = 'green';
-        ctx.fillRect(this.x, barY, (barWidth * this.health) / this.maxHealth, barHeight);
+        ctx.fillRect(centerX, barY, barWidth * healthRatio, barHeight);
 
-        // Visual feedback for AOE charging
+        
         if (this.isCharging) {
             ctx.save();
             ctx.globalAlpha = 0.5;
@@ -202,44 +350,37 @@ class Enemy extends Square {
             ctx.fillRect(this.x, this.y, this.width, this.height);
             ctx.restore();
         }
-    }
 
-    collidesWith(square) {
-        // Check for collision with a Square (e.g., the player)
-        return !(
-            this.x + this.width < square.x ||
-            this.x > square.x + square.width ||
-            this.y + this.height < square.y ||
-            this.y > square.y + square.height
-        );
-    }
-
-    takeDamage(amount) {
-        if (this.active) {
-            this.health -= amount;
-            // Create hit effect
-            particleSystem.addHitParticle(
-                this.x + this.width/2, 
-                this.y + this.height/2, 
-                "255,0,0"
-            );
-            
-            if (this.health <= 0) {
-                this.active = false;
-                // Create death effect
-                for (let i = 0; i < 8; i++) {
-                    particleSystem.addHitParticle(
-                        this.x + this.width/2, 
-                        this.y + this.height/2, 
-                        "255,0,0"
-                    );
-                }
-            }
+        // Add visual indicator for stunned state
+        if (this.stunned) {
+            ctx.save();
+            ctx.globalAlpha = 0.5;
+            ctx.fillStyle = '#00ffff';
+            ctx.fillRect(this.x, this.y, this.width, this.height);
+            ctx.restore();
         }
+
+        // Add health number display for bosses
+        if (this.isBoss) {
+            ctx.fillStyle = 'white';
+            ctx.font = '16px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(`${this.health}/${this.maxHealth}`, this.x + this.width/2, this.y - 25);
+            ctx.textAlign = 'left'; // Reset alignment
+        }
+    }
+
+    collidesWith(entity) {
+        return !(
+            this.x + this.width < entity.x ||
+            this.x > entity.x + entity.width ||
+            this.y + this.height < entity.y ||
+            this.y > entity.y + entity.height
+        );
     }
 }
 
-// Projectile class
+// Projectile class for enemy and player projectiles
 class Projectile {
     constructor(x, y, vx, vy, damage, type) {
         this.x = x;
@@ -249,27 +390,35 @@ class Projectile {
         this.damage = damage;
         this.type = type;
         this.active = true;
-        this.radius = type === 'slow' ? 8 : 4;
+        this.radius = type === 'slow' ? 8 : 5;
     }
 
     update() {
+        // Move the projectile
         this.x += this.vx;
         this.y += this.vy;
+
         // Deactivate if out of bounds
-        if (this.x < 0 || this.x > currentRoom.width || this.y < 0 || this.y > currentRoom.height) {
+        if (
+            this.x < 0 || 
+            this.x > canvas.width || 
+            this.y < 0 || 
+            this.y > canvas.height
+        ) {
             this.active = false;
         }
     }
 
     draw(ctx) {
-        ctx.fillStyle = this.type === 'slow' ? 'purple' : 'white';
+        // Draw the projectile
+        ctx.fillStyle = this.type === 'player' ? 'blue' : 'yellow';
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
         ctx.fill();
     }
 
     collidesWith(entity) {
-        // Circle-rectangle collision detection
+        // Circle vs. Rectangle collision detection
         const distX = Math.abs(this.x - entity.x - entity.width / 2);
         const distY = Math.abs(this.y - entity.y - entity.height / 2);
 
@@ -285,15 +434,16 @@ class Projectile {
     }
 }
 
-// AOE Attack class
+// AOEAttack class for area-of-effect attacks
 class AOEAttack extends Projectile {
     constructor(x, y, radius, damage) {
         super(x, y, 0, 0, damage, 'aoe');
         this.radius = radius;
-        this.duration = 30; // Lasts for 30 frames
+        this.duration = 30; // Frames the AOE attack lasts
     }
 
     update() {
+        // Reduce the duration and deactivate if expired
         this.duration--;
         if (this.duration <= 0) {
             this.active = false;
@@ -301,9 +451,113 @@ class AOEAttack extends Projectile {
     }
 
     draw(ctx) {
-        ctx.fillStyle = 'orange';
+        // Draw the AOE effect
+        ctx.fillStyle = 'rgba(255, 128, 0, 0.5)';
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
         ctx.fill();
     }
 }
+
+// WaveAttack class for wave-shaped projectiles
+class WaveAttack extends Projectile {
+    constructor(x, y, dx, dy, width, damage) {
+        const angle = Math.atan2(dy, dx);
+        const speed = 4;
+        const vx = Math.cos(angle) * speed;
+        const vy = Math.sin(angle) * speed;
+        super(x, y, vx, vy, damage, 'wave');
+        this.width = width;
+        this.length = 20;
+    }
+
+    update() {
+        // Move the wave
+        this.x += this.vx;
+        this.y += this.vy;
+        // Deactivate if out of bounds
+        if (
+            this.x < 0 || 
+            this.x > canvas.width || 
+            this.y < 0 || 
+            this.y > canvas.height
+        ) {
+            this.active = false;
+        }
+    }
+
+    draw(ctx) {
+        // Draw the wave
+        ctx.save();
+        ctx.strokeStyle = 'orange';
+        ctx.lineWidth = this.width;
+        ctx.beginPath();
+        ctx.moveTo(this.x - this.vx * this.length, this.y - this.vy * this.length);
+        ctx.lineTo(this.x, this.y);
+        ctx.stroke();
+        ctx.restore();
+    }
+}
+
+// GravityField class for gravitational attacks
+class GravityField extends AOEAttack {
+    constructor(x, y, radius) {
+        super(x, y, radius, 1);
+        this.pullForce = 0.5;
+    }
+
+    update() {
+        super.update();
+        // Apply gravitational pull to the player
+        const dx = this.x - gameState.player.x;
+        const dy = this.y - gameState.player.y;
+        const distance = Math.hypot(dx, dy);
+
+        if (distance < this.radius && distance > 0) {
+            const force = (this.radius - distance) * this.pullForce / distance;
+            gameState.player.vx += dx * force;
+            gameState.player.vy += dy * force;
+        }
+    }
+
+    draw(ctx) {
+        // Draw the gravity field
+        ctx.save();
+        const gradient = ctx.createRadialGradient(
+            this.x, this.y, 0,
+            this.x, this.y, this.radius
+        );
+        gradient.addColorStop(0, 'rgba(75, 0, 130, 0.6)');
+        gradient.addColorStop(1, 'rgba(75, 0, 130, 0)');
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+}
+
+// Update the Player's applyUpgrade method
+Player.prototype.applyUpgrade = function(upgrade) {
+    if (upgrade.type === 'stat') {
+        // ...existing stat upgrade code...
+    } else if (upgrade.type === 'ability') {
+        const duration = upgrade.duration || 5000;
+        switch(upgrade.name) {
+            case 'temporaryInvulnerability':
+                this.invulnerable = true;
+                setTimeout(() => { this.invulnerable = false; }, duration);
+                break;
+            case 'projectileReflection':
+                this.reflectProjectiles = true;
+                setTimeout(() => { this.reflectProjectiles = false; }, duration);
+                break;
+            case 'enemyStunning':
+                gameState.enemies.forEach(enemy => {
+                    enemy.stunned = true;
+                    enemy.stunDuration = Math.floor(duration / (1000/60)); // Convert ms to frames
+                });
+                break;
+        }
+    }
+};
