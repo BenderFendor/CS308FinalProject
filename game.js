@@ -614,7 +614,7 @@ Player.prototype.applyUpgrade = function(upgrade) {
     if (upgrade.type === 'stat') {
         switch(upgrade.category) {
             case 'health':
-                this.maxHealth = Math.floor(this.maxHealth * upgrade.modifier);
+                this.maxHealth = (this.maxHealth * upgrade.modifier);
                 this.health = this.maxHealth;
                 break;
             case 'speed':

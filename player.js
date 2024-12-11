@@ -314,7 +314,6 @@ class Player {
         
         // Optional: Add slight push in collision direction
         const angle = Math.atan2(dy, dx);
-// Export the Player class if using ES6 modules (optional)
         const pushForce = 0.5;
         
         this.vx += Math.cos(angle) * pushForce;
