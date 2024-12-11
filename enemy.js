@@ -14,19 +14,19 @@ class Enemy {
         const enemyTypes = {
             earth: { 
                 health: 2,
-                speed: 1,
+                speed: 2, // Increased from 1
                 color: '#4a8505',
                 attacks: ['groundSlam', 'rockThrow']
             },
             solar: { 
                 health: 3,
-                speed: 1.2,
+                speed: 2.4, // Increased from 1.2
                 color: '#ffa726',
                 attacks: ['solarFlare', 'heatWave']
             },
             blackhole: { 
                 health: 5,
-                speed: 1.5,
+                speed: 3, // Increased from 1.5
                 color: '#4a148c',
                 attacks: ['gravityPull', 'voidBlast']
             }
@@ -35,6 +35,10 @@ class Enemy {
         const typeData = enemyTypes[type] || enemyTypes.earth;
         Object.assign(this, typeData);
         this.type = type;
+        
+        // Add debug log for initial health setup
+        console.log(`Enemy created - Type: ${type}, Initial Health: ${this.health}, MaxHealth: ${this.maxHealth}`);
+        
         this.maxHealth = this.health;
         this.active = true;
         this.mass = 1; // For collision physics
@@ -47,15 +51,28 @@ class Enemy {
         this.stunned = false;
         this.stunDuration = 0;
         this.lastDamageTime = 0; // Add cooldown for taking damage
-        this.damageImmunity = 500; // 500ms between damage taken
 
-        this.lastDamageTime = 0;
-        this.damageCooldown = 1000; // 1000ms = 1 second between hits
+        this.lastDamageTime = Date.now();
+        this.damageCooldown = 250; // 0.25 second between damage
         this.isInvulnerable = false; // Add invulnerability state
 
         // Initialize attack cooldowns with random values
         for (const key in this.attackPatterns) {
             this.attackPatterns[key].lastUsed = Math.floor(Math.random() * this.attackPatterns[key].cooldown);
+        }
+
+        // Add sprite loading based on type
+        this.img = new Image();
+        switch(type) {
+            case 'earth':
+                this.img.src = 'earth.png';
+                break;
+            case 'solar':
+                this.img.src = 'solar.png';
+                break;
+            case 'blackhole':
+                this.img.src = 'blackhole.png';
+                break;
         }
     }
 
@@ -69,22 +86,30 @@ class Enemy {
     }
 
     update(player) {
-        if (!this.active) return;
+        // Only exit update if health is zero
+        if (this.health <= 0) return;
 
+        // Check if stunned first
         if (this.stunned) {
-            // Remain idle while stunned
-            this.stunDuration--;
-            if (this.stunDuration <= 0) {
-                this.stunned = false;
+            // Do nothing while stunned - completely freeze all actions
+            if (this.collidesWith(player)) {
+                this.handleCollisionWithPlayer(player);
             }
             return;
         }
 
+        // Only then process normal updates
+        if (!this.active) return;
+
+        // Rest of the normal update logic
         if (this.isFlashing) {
             this.flashTimer--;
             if (this.flashTimer <= 0) {
                 this.isFlashing = false;
-                this.explode();
+                // Only explode if health is depleted
+                if (this.health <= 0) {
+                    this.explode();
+                }
             }
         } else {
             if (!this.isCharging) {
@@ -270,39 +295,47 @@ class Enemy {
         gameState.projectiles.push(projectile);
     }
     handleCollisionWithPlayer(player) {
+        // Apply damage and other effects
+        this.takeDamage(player.damage);
+    }
+
+    takeDamage(amount) {
         const currentTime = Date.now();
-        // Only process collision if enemy isn't invulnerable
-        if (!this.isInvulnerable) {
-            // Apply damage and make enemy invulnerable
-            this.takeDamage(player.damage);
+        const timeSinceLastDamage = currentTime - this.lastDamageTime;
+
+        // Debug detailed health checks
+        console.log('=== Enemy Damage Debug ===');
+        console.log(`Current health: ${this.health}`);
+        console.log(`Damage amount: ${amount}`);
+        console.log(`Time since last damage: ${timeSinceLastDamage}ms`);
+        console.log(`Health is number: ${typeof this.health === 'number'}`);
+        console.log(`Amount is number: ${typeof amount === 'number'}`);
+
+        // Fix damage cooldown logic
+        if (!this.isInvulnerable && timeSinceLastDamage >= this.damageCooldown) {
+            this.health -= amount;
+            this.lastDamageTime = currentTime;
             this.isInvulnerable = true;
             
             // Reset invulnerability after cooldown
             setTimeout(() => {
                 this.isInvulnerable = false;
             }, this.damageCooldown);
-            
-            // Bounce physics
-            this.vx = -this.vx;
-            this.vy = -this.vy;
-            player.vx = -player.vx * 0.8;
-            player.vy = -player.vy * 0.8;
-        }
-    }
 
-    takeDamage(amount) {
-        // Only apply damage if not invulnerable
-        if (!this.isInvulnerable) {
-            this.health -= amount;
+            console.log(`New health after damage: ${this.health}`);
+            console.log(`MaxHealth: ${this.maxHealth}`);
 
             // Visual feedback
             this.isFlashing = true;
             this.flashTimer = 5;
 
-            // Check for death
+            // Only deactivate if health is depleted
             if (this.health <= 0) {
-                this.active = false;
+                console.log('Enemy defeated - Final health check triggered');
+                // 'explode()' will handle setting 'this.active = false'
             }
+        } else {
+            console.log('Damage prevented by cooldown');
         }
     }
 
@@ -318,12 +351,23 @@ class Enemy {
     }
 
     draw(ctx) {
-        if (this.isFlashing) {
-            ctx.fillStyle = 'orange';
+        // Draw sprite if loaded, otherwise fallback to colored rectangle
+        if (this.img && this.img.complete) {
+            ctx.save();
+            if (this.isFlashing) {
+                ctx.globalAlpha = 0.5;
+            }
+            ctx.drawImage(this.img, this.x, this.y, this.width, this.height);
+            ctx.restore();
         } else {
-            ctx.fillStyle = this.color;
+            // Fallback to original colored rectangle drawing
+            if (this.isFlashing) {
+                ctx.fillStyle = 'orange';
+            } else {
+                ctx.fillStyle = this.color;
+            }
+            ctx.fillRect(this.x, this.y, this.width, this.height);
         }
-        ctx.fillRect(this.x, this.y, this.width, this.height);
 
         // Draw centered HP bar
         const barWidth = this.width;
@@ -537,11 +581,8 @@ class GravityField extends AOEAttack {
     }
 }
 
-// Update the Player's applyUpgrade method
 Player.prototype.applyUpgrade = function(upgrade) {
-    if (upgrade.type === 'stat') {
-        // ...existing stat upgrade code...
-    } else if (upgrade.type === 'ability') {
+         if (upgrade.type === 'ability') {
         const duration = upgrade.duration || 5000;
         switch(upgrade.name) {
             case 'temporaryInvulnerability':

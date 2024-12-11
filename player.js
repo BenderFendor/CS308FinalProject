@@ -12,12 +12,12 @@ class Player {
         this.endX = 0;
         this.endY = 0;
         this.rotation = 0; // Add rotation angle
-        this.health = 20; // Set base health to 20
-        this.maxHealth = 20;
+        this.health = 50; // Set base health to 20
+        this.maxHealth = 50;
         this.isPlayer = false; // To distinguish player from other objects
         this.invulnerable = false; // For damage immunity frames
         this.invulnerableTimer = 0;
-        this.speed = 1; // Base speed
+        this.speed = 2; // Increased from 1
         this.damage = 1; // Base damage
         this.mass = this.isPlayer ? 2 : 1; // Player has more mass
         if (imgSrc) {
@@ -44,7 +44,7 @@ class Player {
         // Movement mechanics
         this.dragStrength = 1;
         this.bounceResistance = 0.8;
-        this.frictionCoefficient = 0.98;
+        this.frictionCoefficient = 0.99; // Reduced friction for smoother movement
         
         // Debug info
         this.debugInfo = {
@@ -56,28 +56,57 @@ class Player {
 
     startDrag(mouseX, mouseY) {
         this.isDragging = true;
+        // Start from player center instead of mouse position
         this.startX = this.x + this.width / 2;
         this.startY = this.y + this.height / 2;
+        this.endX = mouseX;
+        this.endY = mouseY;
+
+        // Store the initial player position
+        this.dragStartPlayerX = this.x;
+        this.dragStartPlayerY = this.y;
     }
 
     drag(mouseX, mouseY) {
-        this.endX = mouseX;
-        this.endY = mouseY;
+        if (this.isDragging) {
+            // Just update end position
+            this.endX = mouseX;
+            this.endY = mouseY;
+        }
     }
 
     endDrag(mouseX, mouseY) {
-        // Calculate velocity based on the distance and direction from mouse to square
-        let dx = mouseX - (this.x + this.width / 2);
-        let dy = mouseY - (this.y + this.height / 2);
-        let distance = Math.sqrt(dx * dx + dy * dy);
-        
-        this.vx = (dx / distance) * Math.min(distance / 10, 20);
-        this.vy = (dy / distance) * Math.min(distance / 10, 20);
-        this.isDragging = false;
+        if (this.isDragging) {
+            // Calculate velocity towards mouse cursor
+            const dx = mouseX - (this.x + this.width / 2);
+            const dy = mouseY - (this.y + this.height / 2);
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance > 0) {
+                // Calculate launch speed with better control
+                const maxSpeed = 30;
+                const speedMultiplier = 0.2; // Adjusted for better feel
+                const launchSpeed = Math.min(distance * speedMultiplier, maxSpeed);
+                
+                // Set velocity towards mouse position
+                this.vx = (dx / distance) * launchSpeed;
+                this.vy = (dy / distance) * launchSpeed;
+                
+                // Play sound effect
+                if (typeof window.audioSystem !== 'undefined') {
+                    window.audioSystem.play('wind');
+                }
+            }
+            
+            this.isDragging = false;
+        }
     }
 
     update(canvas) {
         if (!this.isDragging) {
+            const oldX = this.x;
+            const oldY = this.y;
+            
             // Update position based on velocity
             this.x += this.vx;
             this.y += this.vy;
@@ -87,20 +116,31 @@ class Player {
             this.vy *= this.frictionCoefficient;
 
             // Edge collision detection and bounce
+            let wallHit = false;
+            
             if (this.x < 0) {
                 this.x = 0;
                 this.vx = -this.vx * this.bounceResistance;
+                wallHit = true;
             } else if (this.x + this.width > canvas.width) {
                 this.x = canvas.width - this.width;
                 this.vx = -this.vx * this.bounceResistance;
+                wallHit = true;
             }
 
             if (this.y < 0) {
                 this.y = 0;
                 this.vy = -this.vy * this.bounceResistance;
+                wallHit = true;
             } else if (this.y + this.height > canvas.height) {
                 this.y = canvas.height - this.height;
                 this.vy = -this.vy * this.bounceResistance;
+                wallHit = true;
+            }
+
+            // Play bounce sound if we hit a wall
+            if (wallHit && typeof audioSystem !== 'undefined') {
+                audioSystem.play('bounce');
             }
         }
 
@@ -125,6 +165,47 @@ class Player {
     }
 
     draw(ctx) {
+        // Draw drag line first (behind player)
+        if (this.isDragging) {
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+            ctx.lineWidth = 2;
+            const friction = 0.9;
+            this.vx *= friction;
+            this.vy *= friction;
+            ctx.moveTo(this.x + this.width / 2, this.y + this.height / 2);
+            ctx.lineTo(this.endX, this.endY);
+            ctx.stroke();
+
+            // Draw direction arrow
+            const dx = this.endX - (this.x + this.width / 2);
+            const dy = this.endY - (this.y + this.height / 2);
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            if (distance > 0) {
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                // Draw arrow head
+                const angle = Math.atan2(dy, dx);
+                const arrowLength = 15;
+                const arrowAngle = Math.PI / 6;
+                
+                ctx.beginPath();
+                ctx.moveTo(this.x + this.width / 2, this.y + this.height / 2);
+                ctx.lineTo(
+                    this.x + this.width / 2 - Math.cos(angle + arrowAngle) * arrowLength,
+                    this.y + this.height / 2 - Math.sin(angle + arrowAngle) * arrowLength
+                );
+                ctx.moveTo(this.x + this.width / 2, this.y + this.height / 2);
+                ctx.lineTo(
+                    this.x + this.width / 2 - Math.cos(angle - arrowAngle) * arrowLength,
+                    this.y + this.height / 2 - Math.sin(angle - arrowAngle) * arrowLength
+                );
+                ctx.stroke();
+            }
+        }
+
         if (this.isDragging) {
             // Draw drag line
             ctx.strokeStyle = 'white';
@@ -188,13 +269,12 @@ class Player {
 
         // Draw active effects
         this.effects.forEach(effect => {
-            // Effect drawing logic
         });
 
         // Draw debug info if enabled
         if (this.debugInfo.stats) {
             ctx.fillStyle = 'white';
-            ctx.font = '12px Arial';
+            ctx.font = '12px Alagard';
             ctx.fillText(`Health: ${this.health}`, this.x, this.y - 25);
         }
     }
@@ -228,22 +308,16 @@ class Player {
     }
 
     resolveCollision(other) {
-        // Implement collision resolution logic
+        // Only calculate direction, don't modify position or bounce
         const dx = (this.x + this.width / 2) - (other.x + other.width / 2);
         const dy = (this.y + this.height / 2) - (other.y + other.height / 2);
-        const distance = Math.hypot(dx, dy);
-
-        if (distance === 0) return;
-
-        const overlapX = (this.width / 2 + other.width / 2) - Math.abs(dx);
-        const overlapY = (this.height / 2 + other.height / 2) - Math.abs(dy);
-
-        if (overlapX < overlapY) {
-            this.vx = -this.vx * this.bounceResistance;
-            this.x += (dx > 0 ? overlapX : -overlapX);
-        } else {
-            this.vy = -this.vy * this.bounceResistance;
-            this.y += (dy > 0 ? overlapY : -overlapY);
-        }
+        
+        // Optional: Add slight push in collision direction
+        const angle = Math.atan2(dy, dx);
+// Export the Player class if using ES6 modules (optional)
+        const pushForce = 0.5;
+        
+        this.vx += Math.cos(angle) * pushForce;
+        this.vy += Math.sin(angle) * pushForce;
     }
 }

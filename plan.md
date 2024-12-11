@@ -135,3 +135,6 @@ Building upon drag bounce mechanics, creating a wave-based arena combat game wit
   - Speed: 1.5
 - Background: Black hole visuals.
 - Objective: Survive and defeat all enemies.
+
+
+Please make it so that the player has a abilty that they can pick each new level three of them all like the enemys abilitys but for the player it has a menu that pauses the game and they can only pick one per run then upgrade each time they complete a new level so like a rock earthquake for one or a solar heatblash for to or a gravity black hole for three the black hole shoots a black hole where the player is pointing and pulls enemys in and deals a 3 x the players damage with a 3 second cool down add simlar abilites for the other elements for the player

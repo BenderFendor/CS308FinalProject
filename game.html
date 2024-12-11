@@ -6,17 +6,31 @@
     <title>Wave Bouncer</title>
     <style>
         body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
             margin: 0;
-            overflow: hidden;
-            background: #1e1e2e;
+            background: #878787;
             color: white;
             font-family: Alagard, sans-serif;
         }
+        
+        .game-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            margin: 0 auto;
+        }
+
         canvas {
             display: block;
-            margin: 0 auto;
-            background: #111;
+            border: 4px solid black;
+            box-shadow: 5px 6px rgba(0, 0, 0, 0.5);
+            background-color: rgba(0, 0, 0, 0.8);
+            background-blend-mode: multiply;
+            background-size: cover;
         }
+
         .overlay {
             position: absolute;
             top: 50%;
@@ -28,24 +42,56 @@
             border-radius: 10px;
             display: none;
         }
-        #game-over, #pause-menu {
-            color: white;
-            font-size: 24px;
-        }
+
         .button {
-            margin: 10px;
-            padding: 10px 20px;
-            font-size: 18px;
-            cursor: pointer;
-            background: #4a4a4a;
+            padding: 8px 16px;
+            background-color: #533d09;
+            box-shadow: 5px 6px rgba(0, 0, 0, 0.5);
             color: white;
             border: none;
-            border-radius: 5px;
-            transition: background 0.3s;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: Alagard;
+            font-size: 32px;
+            margin: 10px;
+            transition: background-color 0.3s;
         }
+
         .button:hover {
-            background: #666;
+            background-color: #45a049;
         }
+
+        #main-menu {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            z-index: 100;
+            width: 80%;
+            background-color: rgba(0, 0, 0, 0.8);
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+        }
+
+        #main-menu h1 {
+            font-size: 4em;
+            margin-bottom: 30px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        #game-info {
+            margin-top: 30px;
+            padding: 20px;
+            background-color: rgba(20, 15, 2, 0.9);
+            box-shadow: 5px 6px rgba(0, 0, 0, 0.5);
+            color: white;
+            border-radius: 8px;
+            font-size: 24px;
+            line-height: 1.5;
+        }
+
         #phase-indicator {
             position: absolute;
             top: 10px;
@@ -96,51 +142,95 @@
             color: #fff;
             text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
         }
+        /* Pause menu styles */
+        #pause-menu {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(34, 34, 34, 0.8);
+            border: 2px solid #fff;
+            padding: 20px;
+            text-align: center;
+            color: #fff;
+        }
+
+        #pause-menu button {
+            margin: 10px;
+            padding: 10px 20px;
+            font-size: 16px;
+        }
     </style>
 </head>
 <body>
-    <canvas id="gameCanvas"></canvas>
-    
-    <div id="phase-indicator"></div>
-    
-    <div id="wave-announcement" class="wave-announcement"></div>
-    
-    <div id="game-over" class="overlay">
-        <h2>Game Over!</h2>
-        <p id="final-score"></p>
-        <p id="high-score"></p>
-        <p id="waves-survived"></p>
-        <button class="button" onclick="startGame()">Try Again</button>
-    </div>
-    
-    <div id="pause-menu" class="overlay">
-        <h2>Paused</h2>
-        <button class="button" onclick="resumeGame()">Resume</button>
-        <button class="button" onclick="restartGame()">Restart</button>
-        <div class="settings">
-            <label>
-                Sound:
-                <input type="range" id="sound-volume" min="0" max="100" value="50">
-            </label>
-            <label>
-                <input type="checkbox" id="debug-mode"> Debug Mode
-            </label>
+    <div class="game-container">
+        <canvas id="gameCanvas"></canvas>
+        
+        <div id="main-menu" class="overlay">
+            <h1>Wave Bouncer</h1>
+            <button class="button" onclick="startGame()">Start Game</button>
+            <div id="game-info">
+                <p>Dodge enemies and survive waves to progress through phases.<br>
+                Each phase has unique enemies with different abilities:<br>
+                • Earth Phase - Ground slams and rock throws<br>
+                • Solar Phase - Solar flares and heat waves<br>
+                • Black Hole Phase - Gravity pulls and void blasts<br><br>
+                
+                Survive 3 normal waves and 1 boss wave per phase.<br>
+                Collect chests for powerful upgrades:<br>
+                • Stat Boosts - Health, Speed, and Damage<br>
+                • Special Abilities - Invincibility, Projectile Shield, Mass Stun<br><br>
+                
+                Controls:<br>
+                • Click and drag to launch your character<br>
+                • ESC to pause the game<br>
+                • Bounce off walls to escape enemies</p>
+            </div>
+        </div>
+
+        <div id="game-over" class="overlay">
+            <h2>Game Over!</h2>
+            <p id="final-score"></p>
+            <p id="high-score"></p>
+            <p id="waves-survived"></p>
+            <button class="button" onclick="startGame()">Try Again</button>
+        </div>
+        
+        <div id="pause-menu" class="overlay">
+            <h2>Paused</h2>
+            <button class="button" onclick="resumeGame()">Resume</button>
+            <div class="settings">
+                <label>
+                    Sound:
+                    <input type="range" id="sound-volume" min="0" max="100" value="50">
+                </label>
+            </div>
+        </div>
+        
+        <div id="debug-overlay">
+            <div>FPS: <span id="fps-counter">60</span></div>
+            <div>Active Enemies: <span id="enemy-counter">0</span></div>
+            <div>Current Wave: <span id="wave-counter">1</span></div>
+            <div>Phase: <span id="phase-counter">EARTH</span></div>
+        </div>
+
+        <div id="upgrade-message" class="overlay">
+            <h2 id="upgrade-text"></h2>
         </div>
     </div>
-    
-    <div id="debug-overlay">
-        <div>FPS: <span id="fps-counter">60</span></div>
-        <div>Active Enemies: <span id="enemy-counter">0</span></div>
-        <div>Current Wave: <span id="wave-counter">1</span></div>
-        <div>Phase: <span id="phase-counter">EARTH</span></div>
-    </div>
 
-    <div id="upgrade-message" class="overlay">
-        <h2 id="upgrade-text"></h2>
-    </div>
-
+    <!-- Adjust script loading order: Load player.js before game.js -->
+    <script src="gameConfig.js"></script>
     <script src="player.js"></script>
-    <script src="enemy.js"></script>
     <script src="game.js"></script>
+    <script src="enemy.js"></script>
+    <script>
+        // Show main menu on load
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('main-menu').style.display = 'block';
+        });
+    </script>
 </body>
 </html>
+
